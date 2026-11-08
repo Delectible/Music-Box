@@ -163,7 +163,7 @@ class InternetArchive extends MusicSource {
         RemoteTrack(
           title: _str(f['title']).isNotEmpty
               ? _str(f['title'])
-              : name.substring(0, name.length - ext.length - 1),
+              : stem.split('/').last.replaceAll('_', ' ').trim(),
           artist: _str(f['artist']).isNotEmpty
               ? _str(f['artist'])
               : (_str(f['creator']).isNotEmpty ? _str(f['creator']) : artist),

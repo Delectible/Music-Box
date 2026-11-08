@@ -583,7 +583,8 @@ class _DownloadsScreen extends StatelessWidget {
                     switch (j.state) {
                       JobState.queued => 'Waiting · ${j.track.artist}',
                       JobState.downloading =>
-                        j.progress < 0 ? 'Downloading…' : 'Downloading ${(j.progress * 100).round()}%',
+                        j.note ??
+                            (j.progress < 0 ? 'Downloading…' : 'Downloading ${(j.progress * 100).round()}%'),
                       JobState.tagging => 'Adding tags and cover…',
                       JobState.done => 'In your library · ${j.track.artist}',
                       JobState.skipped => j.error ?? 'Skipped',

@@ -138,6 +138,7 @@ class SettingsScreen extends StatelessWidget {
                 _Switch(
                   icon: Icons.schedule_rounded,
                   title: 'Show the clock',
+                  subtitle: 'In the player on wide (car) screens',
                   value: s.showClock,
                   onChanged: (v) => s.showClock = v,
                 ),

@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Downloads keep going in the background (with a notification). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Getting music from sites (Get music tab). -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -43,6 +46,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".DownloadService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <!-- audio_service: background playback, notification, media buttons. -->
         <service

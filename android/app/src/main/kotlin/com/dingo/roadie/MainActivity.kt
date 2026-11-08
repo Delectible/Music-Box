@@ -155,6 +155,16 @@ class MainActivity : AudioServiceActivity() {
                         true
                     }
                 }
+                "downloading" -> {
+                    val active = call.argument<Number>("active")?.toInt() ?: 0
+                    val done = call.argument<Number>("done")?.toInt() ?: 0
+                    try {
+                        DownloadService.update(this, active, done)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("downloads", e.message ?: e.toString(), null)
+                    }
+                }
                 "fileInfo" -> {
                     val path = call.argument<String>("path") ?: ""
                     val id = (call.argument<Number>("id") ?: -1).toLong()

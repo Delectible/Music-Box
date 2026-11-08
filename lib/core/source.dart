@@ -17,6 +17,10 @@ abstract class LibrarySource {
 
   /// Asks the media index to pick up new files (e.g. after a download).
   Future<void> scan(List<String> paths);
+
+  /// A cover already fetched for [albumId] (this size, else the closest),
+  /// so it can show on the first frame. Null if none is known yet.
+  String? artNow(int albumId, int size) => null;
 }
 
 class MediaStoreSource implements LibrarySource {
@@ -35,16 +39,30 @@ class MediaStoreSource implements LibrarySource {
   }
 
   final _art = <String, Future<String?>>{};
+  final _known = <String, String>{};
 
   @override
   Future<String?> art(int albumId, int size) => _art.putIfAbsent('$albumId@$size', () async {
     try {
       final path = await _ch.invokeMethod<String>('art', {'albumId': albumId, 'size': size});
-      return path != null && File(path).existsSync() ? path : null;
+      final ok = path != null && File(path).existsSync() ? path : null;
+      if (ok != null) _known['$albumId@$size'] = ok;
+      return ok;
     } on PlatformException {
       return null;
     }
   });
+
+  @override
+  String? artNow(int albumId, int size) {
+    final exact = _known['$albumId@$size'];
+    if (exact != null) return exact;
+    for (final s in const [800, 400, 160]) {
+      final p = _known['$albumId@$s'];
+      if (p != null) return p;
+    }
+    return null;
+  }
 
   @override
   Future<void> scan(List<String> paths) => _ch.invokeMethod('scan', {'paths': paths});
@@ -60,6 +78,8 @@ class DemoSource implements LibrarySource {
   Future<String?> art(int albumId, int size) async => null;
   @override
   Future<void> scan(List<String> paths) async {}
+  @override
+  String? artNow(int albumId, int size) => null;
 
   static const _albums = <(String, String, String, int, List<String>)>[
     (

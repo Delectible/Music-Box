@@ -26,6 +26,16 @@
 10. An info button on songs: everything about it, where it's stored.
    (0.2.1: Song info in the song menu: song, file and storage, audio
    format, cover, every tag, play stats, Android's media index.)
+11. Player opening: the cover flashed its stand-in and landed in the wrong
+   place (record layout). (0.2.2: cover warmed ahead and shown on the first
+   frame, flies unscaled and unrotated onto the label.)
+12. Back / app-switch gestures skipped songs. (0.2.2: swipes starting at
+   the screen edges or on the gesture bar, or too short, are ignored.)
+13. Fix tags: MusicBrainz 503. (0.2.2: waits and retries, plain message.)
+14. Downloads failed (no internet / connection dropped) when Roadie was in
+   the background. (0.2.2: foreground notification while downloading,
+   automatic retries that continue the partial file, plain error text.)
+15. The clock in the player doubled the phone's. (0.2.2: car screens only.)
 
 ## Ideas
 

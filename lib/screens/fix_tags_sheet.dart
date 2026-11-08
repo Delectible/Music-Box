@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/crash_log.dart';
+import '../core/http.dart';
 import '../core/metadata.dart';
 import '../core/models.dart';
 import '../core/scope.dart';
@@ -120,7 +121,7 @@ class _FixTagsState extends State<_FixTags> {
       if (mounted) setState(() => _results = r);
     } on Object catch (e, st) {
       CrashLog.record(e, st, where: 'fix tags search');
-      if (mounted) setState(() => _error = 'Couldn\'t reach MusicBrainz: $e');
+      if (mounted) setState(() => _error = 'Couldn\'t reach MusicBrainz: ${friendlyError(e)}');
     }
     if (mounted) setState(() => _busy = false);
   }

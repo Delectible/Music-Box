@@ -121,60 +121,63 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
           body: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _controls ? setState(() => _controls = false) : _showControls(),
-            onHorizontalDragEnd: (d) {
-              final v = d.primaryVelocity ?? 0;
-              if (v.abs() > 300) _step(v < 0 ? 1 : -1);
-            },
-            child: LayoutBuilder(
-              builder: (context, box) {
-                final short = min(box.maxWidth, box.maxHeight);
-                final cover = short * 0.46;
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    RepaintBoundary(
-                      child: ImageFiltered(
-                        // Ambience is drawn coarse; blur makes it soft clouds.
-                        enabled: style == VizStyle.ambience,
-                        imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14, tileMode: TileMode.clamp),
-                        child: CustomPaint(
-                          painter: VizPainter(
-                            style: style,
-                            scene: _scene,
-                            accent: accent,
-                            coverSize: cover,
-                            repaint: _frame,
+            child: SkipSwipe(
+              enabled: true,
+              onNext: () => _step(1),
+              onPrevious: () => _step(-1),
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final short = min(box.maxWidth, box.maxHeight);
+                  final cover = short * 0.46;
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RepaintBoundary(
+                        child: ImageFiltered(
+                          // Ambience is drawn coarse; blur makes it soft clouds.
+                          enabled: style == VizStyle.ambience,
+                          imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14, tileMode: TileMode.clamp),
+                          child: CustomPaint(
+                            painter: VizPainter(
+                              style: style,
+                              scene: _scene,
+                              accent: accent,
+                              coverSize: cover,
+                              repaint: _frame,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    if (style.usesCover && song != null)
-                      Center(
-                        child: Transform.translate(
-                          offset: Offset(0, -short * 0.05),
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: _frame,
-                            builder: (context, _, child) => Transform.scale(
-                              scale: 1 + _scene.feed.beat * 0.035 + _scene.feed.level * 0.03,
-                              child: child,
-                            ),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.6), blurRadius: 60)],
+                      if (style.usesCover && song != null)
+                        Center(
+                          child: Transform.translate(
+                            offset: Offset(0, -short * 0.05),
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: _frame,
+                              builder: (context, _, child) => Transform.scale(
+                                scale: 1 + _scene.feed.beat * 0.035 + _scene.feed.level * 0.03,
+                                child: child,
                               ),
-                              child: Art(albumId: song.albumId, size: cover, radius: cover * 0.04),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  boxShadow: [
+                                    BoxShadow(color: accent.withValues(alpha: 0.6), blurRadius: 60),
+                                  ],
+                                ),
+                                child: Art(albumId: song.albumId, size: cover, radius: cover * 0.04),
+                              ),
                             ),
                           ),
                         ),
+                      AnimatedOpacity(
+                        opacity: _controls ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: IgnorePointer(ignoring: !_controls, child: _overlay(context, style)),
                       ),
-                    AnimatedOpacity(
-                      opacity: _controls ? 1 : 0,
-                      duration: const Duration(milliseconds: 250),
-                      child: IgnorePointer(ignoring: !_controls, child: _overlay(context, style)),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         );

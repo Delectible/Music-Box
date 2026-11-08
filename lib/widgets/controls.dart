@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../core/format.dart';
@@ -253,6 +254,65 @@ class _SeekBarState extends State<SeekBar> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Sideways swipe to skip that ignores the phone's own gestures: swipes that
+/// start at the left / right edge (back) or on the gesture bar (switch
+/// apps), and short flicks.
+class SkipSwipe extends StatefulWidget {
+  final bool enabled;
+  final VoidCallback onNext;
+  final VoidCallback onPrevious;
+  final Widget child;
+  const SkipSwipe({
+    super.key,
+    required this.enabled,
+    required this.onNext,
+    required this.onPrevious,
+    required this.child,
+  });
+
+  /// True when [global] is where Android's back / home / app-switch gestures start.
+  static bool inSystemZone(BuildContext context, Offset global) {
+    final size = MediaQuery.sizeOf(context);
+    final g = MediaQuery.systemGestureInsetsOf(context);
+    final pad = MediaQuery.viewPaddingOf(context);
+    final left = g.left > 32 ? g.left : 32.0;
+    final right = g.right > 32 ? g.right : 32.0;
+    var bottom = g.bottom > pad.bottom ? g.bottom : pad.bottom;
+    if (bottom < 28) bottom = 28;
+    return global.dx < left || global.dx > size.width - right || global.dy > size.height - bottom;
+  }
+
+  @override
+  State<SkipSwipe> createState() => _SkipSwipeState();
+}
+
+class _SkipSwipeState extends State<SkipSwipe> {
+  bool _ignore = false;
+  double _dx = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
+    return GestureDetector(
+      // Where the finger went down, not where the drag was recognised.
+      dragStartBehavior: DragStartBehavior.down,
+      onHorizontalDragStart: (d) {
+        _ignore = SkipSwipe.inSystemZone(context, d.globalPosition);
+        _dx = 0;
+      },
+      onHorizontalDragUpdate: (d) => _dx += d.delta.dx,
+      onHorizontalDragCancel: () => _ignore = true,
+      onHorizontalDragEnd: (d) {
+        if (_ignore || _dx.abs() < 60) return;
+        final v = d.primaryVelocity ?? 0;
+        if (v < -250 && _dx < 0) widget.onNext();
+        if (v > 250 && _dx > 0) widget.onPrevious();
+      },
+      child: widget.child,
     );
   }
 }

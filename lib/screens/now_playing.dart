@@ -89,34 +89,32 @@ class _NowPlayingState extends State<NowPlaying> {
                 setState(() => _dragY = 0);
               }
             },
-            onHorizontalDragEnd: swipe
-                ? (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v < -250) p.next();
-                    if (v > 250) p.previous();
-                  }
-                : null,
-            child: Scaffold(
-              backgroundColor: Colors.transparent,
-              body: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Backdrop(song: song),
-                  SafeArea(
-                    child: Column(
-                      children: [
-                        _TopBar(song: song),
-                        Expanded(
-                          child: switch (s.playerStyle) {
-                            PlayerStyle.cover => _CoverLayout(song: song, direction: _direction),
-                            PlayerStyle.glance => _GlanceLayout(song: song, direction: _direction),
-                            PlayerStyle.record => _RecordLayout(song: song, direction: _direction),
-                          },
-                        ),
-                      ],
+            child: SkipSwipe(
+              enabled: swipe,
+              onNext: p.next,
+              onPrevious: p.previous,
+              child: Scaffold(
+                backgroundColor: Colors.transparent,
+                body: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _Backdrop(song: song),
+                    SafeArea(
+                      child: Column(
+                        children: [
+                          _TopBar(song: song),
+                          Expanded(
+                            child: switch (s.playerStyle) {
+                              PlayerStyle.cover => _CoverLayout(song: song, direction: _direction),
+                              PlayerStyle.glance => _GlanceLayout(song: song, direction: _direction),
+                              PlayerStyle.record => _RecordLayout(song: song, direction: _direction),
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -210,7 +208,10 @@ class _TopBar extends StatelessWidget {
             tooltip: 'Close',
             onTap: () => Navigator.of(context).pop(),
           ),
-          if (scope.settings.showClock) const _Clock(),
+          // Car screens: the system clock is often hidden. Phones show it already.
+          if (scope.settings.showClock &&
+              MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height)
+            const _Clock(),
           const Spacer(),
           BigIconButton(
             icon: Icons.graphic_eq_rounded,
@@ -483,6 +484,7 @@ class _CoverLayout extends StatelessWidget {
           onTap: AppScope.of(context).player.toggle,
           child: Hero(
             tag: 'now-art',
+            flightShuttleBuilder: nowArtShuttle,
             child: _TrackSwitcher(
               songId: song.id,
               direction: direction,
@@ -615,6 +617,7 @@ class _GlanceLayout extends StatelessWidget {
                   children: [
                     Hero(
                       tag: 'now-art',
+                      flightShuttleBuilder: nowArtShuttle,
                       child: Art(albumId: song.albumId, size: wide ? 140 : 96),
                     ),
                     SizedBox(width: wide ? 32 : 20),
@@ -780,15 +783,19 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
                   child: CustomPaint(
                     size: Size.square(size),
                     painter: _VinylPainter(Theme.of(context).colorScheme.primary),
-                    child: Center(
-                      child: _TrackSwitcher(
-                        songId: widget.song.id,
-                        direction: widget.direction,
-                        child: Hero(
-                          tag: 'now-art',
-                          child: Art(albumId: widget.song.albumId, size: size * 0.42, radius: size * 0.21),
-                        ),
-                      ),
+                  ),
+                ),
+                // The label turns with the record but flies in (Hero) unrotated,
+                // so it lands exactly in the middle.
+                _TrackSwitcher(
+                  songId: widget.song.id,
+                  direction: widget.direction,
+                  child: Hero(
+                    tag: 'now-art',
+                    flightShuttleBuilder: nowArtShuttle,
+                    child: RotationTransition(
+                      turns: _spin,
+                      child: Art(albumId: widget.song.albumId, size: size * 0.42, radius: size * 0.21),
                     ),
                   ),
                 ),

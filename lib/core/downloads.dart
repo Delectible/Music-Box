@@ -19,6 +19,9 @@ class DownloadJob {
   JobState state = JobState.queued;
   double progress = 0; // 0..1, -1 unknown size
   String? error;
+
+  /// Shown while it waits to try again after a dropped connection.
+  String? note;
   String? path;
   bool cancelled = false;
   DownloadJob(this.track);
@@ -40,6 +43,20 @@ class Downloads extends ChangeNotifier {
   Timer? _rescan;
 
   int get activeCount => jobs.where((j) => j.active).length;
+
+  int _shown = -1;
+
+  /// Keeps Android from cutting the network while Roadie is in the
+  /// background: a "Downloading" notification while anything is active.
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    final n = activeCount;
+    if (n == _shown) return;
+    _shown = n;
+    final done = jobs.where((j) => j.state == JobState.done).length;
+    unawaited(Native.downloading(n, done));
+  }
 
   /// The folder downloads go to.
   Future<String> folder() async {
@@ -122,19 +139,38 @@ class Downloads extends ChangeNotifier {
         return;
       }
       var last = DateTime.now();
-      await Http.download(
-        t.url,
-        file,
-        cancelled: () => j.cancelled,
-        progress: (p) {
-          j.progress = p;
-          final now = DateTime.now();
-          if (now.difference(last).inMilliseconds > 250) {
-            last = now;
+      // A dropped connection (phone changing networks, a tunnel) is tried
+      // again, continuing the part already saved.
+      const waits = [3, 8, 20, 45, 90];
+      for (var attempt = 0; ; attempt++) {
+        try {
+          await Http.download(
+            t.url,
+            file,
+            cancelled: () => j.cancelled,
+            progress: (p) {
+              j.progress = p;
+              j.note = null;
+              final now = DateTime.now();
+              if (now.difference(last).inMilliseconds > 250) {
+                last = now;
+                notifyListeners();
+              }
+            },
+          );
+          break;
+        } on Object catch (e) {
+          if (j.cancelled || !isNetworkError(e) || attempt >= waits.length) rethrow;
+          for (var s = waits[attempt]; s > 0 && !j.cancelled; s--) {
+            j.note = '${friendlyError(e)} · trying again in $s s';
             notifyListeners();
+            await Future<void>.delayed(const Duration(seconds: 1));
           }
-        },
-      );
+          j.note = 'Reconnecting…';
+          notifyListeners();
+        }
+      }
+      j.note = null;
       j.state = JobState.tagging;
       notifyListeners();
       await _tag(file.path, t);
@@ -144,7 +180,8 @@ class Downloads extends ChangeNotifier {
       _rescan = Timer(const Duration(seconds: 2), _addToLibrary);
     } on Object catch (e, st) {
       j.state = JobState.failed;
-      j.error = j.cancelled ? 'Cancelled' : '$e';
+      j.note = null;
+      j.error = j.cancelled ? 'Cancelled' : friendlyError(e);
       if (!j.cancelled) CrashLog.record(e, st, where: 'download ${t.url}');
     }
     notifyListeners();

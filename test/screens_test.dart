@@ -110,6 +110,10 @@ void main() {
       expect(find.text('Coastline at 2am'), findsWidgets);
       await shot(tester, 'car_player_${style.name}');
 
+      // A swipe from the screen edge is the phone's back gesture: no skip.
+      await tester.flingFrom(const Offset(8, 300), const Offset(400, 0), 2000);
+      await _settle(tester);
+      expect(a.player.current!.title, 'Coastline at 2am');
       // Swipe to skip.
       await tester.flingFrom(const Offset(640, 300), const Offset(-400, 0), 2000);
       await _settle(tester);
@@ -250,6 +254,23 @@ void main() {
     expect(find.text('Lossless'), findsWidgets);
     expect(find.textContaining('Internal storage'), findsOneWidget);
     await shot(tester, 'car_11_song_info');
+    a.engine.close();
+  });
+
+  testWidgets('opening the record player: cover flies onto the label', (tester) async {
+    setScreen(tester, phone);
+    final a = await _app({'playerStyle': PlayerStyle.record.name});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await a.player.playAll(a.library.albums[1].songs, start: 0);
+    await _settle(tester);
+    await tester.tap(find.text(a.player.current!.title).last);
+    for (final ms in [80, 160, 260]) {
+      await tester.pump(Duration(milliseconds: ms == 80 ? 80 : (ms == 160 ? 80 : 100)));
+      await shot(tester, 'phone_open_${ms}ms');
+    }
+    await _settle(tester);
+    await shot(tester, 'phone_open_done');
     a.engine.close();
   });
 }

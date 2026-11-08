@@ -9,6 +9,31 @@ import '../core/scope.dart';
 import '../core/settings.dart';
 import '../core/theme.dart';
 
+/// Hero flights of the playing cover: the big (player) cover, scaled, the
+/// whole way. Building the cover at every in-between size would fetch a new
+/// image size each frame and flash the stand-in.
+Widget nowArtShuttle(
+  BuildContext flight,
+  Animation<double> animation,
+  HeroFlightDirection direction,
+  BuildContext from,
+  BuildContext to,
+) {
+  final big = (direction == HeroFlightDirection.push ? to.widget : from.widget) as Hero;
+  return FittedBox(child: big.child);
+}
+
+/// Decodes the playing song's cover ahead of time, at the sizes the player
+/// uses, so opening the player shows it on the first frame.
+Future<void> warmCover(BuildContext context, int albumId) async {
+  final source = AppScope.of(context).library.source;
+  for (final size in const [400, 800]) {
+    final path = await source.art(albumId, size);
+    if (path == null || !context.mounted) continue;
+    await precacheImage(ResizeImage(FileImage(File(path)), width: size), context, onError: (_, _) {});
+  }
+}
+
 /// A colour of its own for each album without a cover.
 Color albumHue(int albumId) {
   final h = (albumId * 137.508) % 360;
@@ -40,8 +65,10 @@ class Art extends StatelessWidget {
             ? _Placeholder(albumId: albumId, size: size)
             : FutureBuilder<String?>(
                 future: scope.library.source.art(albumId, bucket),
+                // A cover fetched before shows straight away (no stand-in flash).
+                initialData: scope.library.source.artNow(albumId, bucket),
                 builder: (context, snap) {
-                  final path = snap.data;
+                  final path = snap.data ?? scope.library.source.artNow(albumId, bucket);
                   return AnimatedSwitcher(
                     duration: motion(scope.settings, 250),
                     child: path == null

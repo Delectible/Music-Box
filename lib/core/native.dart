@@ -57,6 +57,16 @@ class Native {
     }
   }
 
+  /// Shows / updates / removes the downloads notification (a foreground
+  /// service, so downloads keep going with the screen off or in another app).
+  static Future<void> downloading(int active, int done) async {
+    try {
+      await _call<void>('downloading', {'active': active, 'done': done});
+    } on PlatformException {
+      // No notification: downloads still run while Roadie is open.
+    }
+  }
+
   static Future<String> nativeCrashes({bool clear = false}) async =>
       await _call<String>('nativeCrashes', {'clear': clear}) ?? '';
 }

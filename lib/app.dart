@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'core/downloads.dart';
@@ -39,9 +41,19 @@ class _RoadieAppState extends State<RoadieApp> {
   late final _fixer = TagFixer(widget.library);
   late final _preview = Preview(widget.player);
 
+  int _warmed = -1;
+  void _warm() {
+    final id = widget.player.current?.albumId;
+    final ctx = _nav.currentContext;
+    if (id == null || id == _warmed || ctx == null) return;
+    _warmed = id;
+    unawaited(warmCover(ctx, id));
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.player.addListener(_warm);
     PlayerSheet.opener = (_) {
       final nav = _nav.currentState;
       if (nav == null || widget.player.current == null) return;
@@ -51,6 +63,7 @@ class _RoadieAppState extends State<RoadieApp> {
 
   @override
   void dispose() {
+    widget.player.removeListener(_warm);
     _accent.dispose();
     _downloads.dispose();
     _fixer.dispose();

@@ -188,11 +188,27 @@ class MusicBrainz {
   static const _api = 'https://musicbrainz.org/ws/2';
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// One request at a time, a little over a second apart; when MusicBrainz
+  /// says it's busy (503 / 429, common on shared mobile connections), waits
+  /// and tries again: 2, 5, then 10 seconds.
   static Future<Object?> _get(String path, Map<String, String> query) async {
-    final wait = _last.add(const Duration(milliseconds: 1100)).difference(DateTime.now());
-    if (!wait.isNegative) await Future<void>.delayed(wait);
-    _last = DateTime.now();
-    return Http.json(Uri.parse('$_api/$path').replace(queryParameters: {...query, 'fmt': 'json'}));
+    final uri = Uri.parse('$_api/$path').replace(queryParameters: {...query, 'fmt': 'json'});
+    const backoff = [2, 5, 10];
+    for (var attempt = 0; ; attempt++) {
+      final wait = _last.add(const Duration(milliseconds: 1200)).difference(DateTime.now());
+      if (!wait.isNegative) await Future<void>.delayed(wait);
+      _last = DateTime.now();
+      try {
+        return await Http.json(uri);
+      } on HttpFailure catch (e) {
+        final busy = e.status == 503 || e.status == 429 || e.status == 502;
+        if (!busy || attempt >= backoff.length) {
+          if (busy) throw HttpFailure('MusicBrainz is busy right now. Try again in a minute.', e.status);
+          rethrow;
+        }
+        _last = DateTime.now().add(Duration(seconds: backoff[attempt]));
+      }
+    }
   }
 
   static String _q(String s) => s.replaceAll(RegExp(r'[\\+\-!(){}\[\]^"~*?:/]|&&|\|\|'), ' ').trim();

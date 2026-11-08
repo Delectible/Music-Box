@@ -1,7 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:async';
+import 'dart:io';
+
 import 'package:roadie/core/downloads.dart';
+import 'package:roadie/core/http.dart';
 import 'package:roadie/core/library.dart';
 import 'package:roadie/core/metadata.dart';
 import 'package:roadie/core/settings.dart';
@@ -113,5 +117,21 @@ void main() {
       f.tick(1 / 60);
     }
     expect(f.level, lessThan(0.05));
+  });
+
+  test('network errors: plain words, and which are worth retrying', () {
+    const dns = SocketException(
+      "Failed host lookup: 'archive.org'",
+      osError: OSError('No address associated with hostname', 7),
+    );
+    expect(friendlyError(dns), 'No internet connection');
+    expect(isNetworkError(dns), isTrue);
+    expect(
+      friendlyError(const HttpException('Connection closed while receiving data')),
+      'The connection dropped',
+    );
+    expect(isNetworkError(TimeoutException('x')), isTrue);
+    expect(isNetworkError(HttpFailure('busy', 503)), isTrue);
+    expect(isNetworkError(HttpFailure('missing', 404)), isFalse);
   });
 }
