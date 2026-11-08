@@ -108,10 +108,31 @@ class Settings extends ChangeNotifier {
   List<LibraryTab> get tabs {
     final saved = _p.getStringList('tabs');
     if (saved == null) return LibraryTab.values;
-    return [for (final n in saved) ...LibraryTab.values.where((t) => t.name == n)];
+    final out = [for (final n in saved) ...LibraryTab.values.where((t) => t.name == n)];
+    // Tabs added in a later version show up (before Get music) until switched off.
+    final known =
+        _p.getStringList('tabsKnown') ??
+        const ['songs', 'albums', 'artists', 'genres', 'years', 'folders', 'playlists', 'get'];
+    for (final t in LibraryTab.values) {
+      if (!known.contains(t.name) && !out.contains(t)) {
+        final g = out.indexOf(LibraryTab.get);
+        g < 0 ? out.add(t) : out.insert(g, t);
+      }
+    }
+    return out;
   }
 
-  set tabs(List<LibraryTab> v) => _set('tabs', [for (final t in v) t.name]);
+  set tabs(List<LibraryTab> v) {
+    _p.setStringList('tabsKnown', [for (final t in LibraryTab.values) t.name]);
+    _set('tabs', [for (final t in v) t.name]);
+  }
+
+  /// Episode order in a podcast: newest, oldest, number, title.
+  String get episodeOrder => _p.getString('episodeOrder') ?? 'newest';
+  set episodeOrder(String v) => _set('episodeOrder', v);
+
+  bool get unplayedOnly => _p.getBool('unplayedOnly') ?? false;
+  set unplayedOnly(bool v) => _set('unplayedOnly', v);
 
   /// All tabs in the saved order, hidden ones last.
   List<LibraryTab> get tabOrder => [...tabs, ...LibraryTab.values.where((t) => !tabs.contains(t))];

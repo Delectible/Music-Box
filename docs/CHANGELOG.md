@@ -59,6 +59,14 @@
 22. Podcasts by normal means. (0.2.5: Podcasts source: Apple's free
    podcast search, episodes from the show's own RSS feed; pasted feed
    links work; episodes aren't pre-ticked; no MusicBrainz lookup.)
+23. A Podcasts section. (0.2.6: Podcasts tab (shows as covers; sort by
+   newest episode, title, episodes, recently played); a show's episodes by
+   newest / oldest / number / title, unplayed filter, played ticks;
+   podcasts kept out of the music tabs; Android podcast files scanned.)
+24. Fix tags found nothing for a specific classical track. (0.2.6: the
+   artist was searched as one exact phrase ("A; B") and the album had to
+   match; now tries each artist, then looser searches, until something
+   matches; also fixed a crash on matches without tags.)
 
 ## Ideas
 

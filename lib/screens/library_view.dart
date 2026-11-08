@@ -49,6 +49,7 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
             LibraryTab.years => lib.years,
             LibraryTab.folders => lib.folders,
             LibraryTab.playlists => scope.playlists.collections(lib.byId),
+            LibraryTab.podcasts => lib.podcasts,
             _ => const <Collection>[],
           };
           final sorted = sortCollections(items, opts.sort, opts.descending, scope.player);
@@ -123,7 +124,12 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
           hasScrollBody: false,
           child: Center(
             child: Text(
-              widget.tab == LibraryTab.playlists ? 'No playlists yet' : 'Nothing here yet',
+              switch (widget.tab) {
+                LibraryTab.playlists => 'No playlists yet',
+                LibraryTab.podcasts => 'No podcasts yet. Find some in Get music › Podcasts.',
+                _ => 'Nothing here yet',
+              },
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),

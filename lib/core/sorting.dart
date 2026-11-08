@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'models.dart';
 
 /// What a list can be sorted by. Not every key fits every tab: see [SortKey.forTab].
@@ -39,6 +41,7 @@ enum SortKey {
     LibraryTab.artists || LibraryTab.genres => [title, songCount, duration, added, plays, random],
     LibraryTab.folders => [title, songCount, added, random],
     LibraryTab.playlists => [title, songCount, duration, added],
+    LibraryTab.podcasts => [added, title, songCount, lastPlayed, plays, random],
     LibraryTab.years => [year, songCount],
     LibraryTab.get => [title],
   };
@@ -68,6 +71,7 @@ enum LibraryTab {
   years('Years'),
   folders('Folders'),
   playlists('Playlists'),
+  podcasts('Podcasts'),
   get('Get music');
 
   final String label;
@@ -98,6 +102,7 @@ class ViewOptions {
     LibraryTab.years => const ViewOptions(sort: SortKey.year, descending: true, mode: ViewMode.grid),
     LibraryTab.folders => const ViewOptions(sort: SortKey.title, mode: ViewMode.list),
     LibraryTab.playlists => const ViewOptions(sort: SortKey.title, mode: ViewMode.cards),
+    LibraryTab.podcasts => const ViewOptions(sort: SortKey.added, descending: true, mode: ViewMode.grid),
     LibraryTab.get => const ViewOptions(sort: SortKey.title, mode: ViewMode.list),
   };
 
@@ -232,6 +237,11 @@ List<Collection> sortCollections(
     SortKey.plays => (a, b) {
       final c = plays(a).compareTo(plays(b));
       return c != 0 ? c : -byTitle(a, b);
+    },
+    SortKey.lastPlayed => (a, b) {
+      int last(Collection c) =>
+          c.songs.fold(0, (m, s) => max(m, history.lastPlayed(s.id)?.millisecondsSinceEpoch ?? 0));
+      return last(a).compareTo(last(b));
     },
     SortKey.random => (a, b) => _hash(a.key.hashCode, seed).compareTo(_hash(b.key.hashCode, seed)),
     _ => byTitle,

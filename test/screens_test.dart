@@ -278,4 +278,19 @@ void main() {
     await shot(tester, 'phone_open_done');
     a.engine.close();
   });
+
+  testWidgets('podcasts', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await _tab(tester, 'Podcasts');
+    expect(find.text('Road Talk'), findsOneWidget);
+    await shot(tester, 'car_12_podcasts');
+    await tester.tap(find.text('Road Talk'));
+    await _settle(tester);
+    expect(find.text('Last Exit'), findsOneWidget);
+    await shot(tester, 'car_13_podcast_show');
+    a.engine.close();
+  });
 }

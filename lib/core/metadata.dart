@@ -227,22 +227,37 @@ class MusicBrainz {
   }) async {
     final t = _q(title);
     if (t.isEmpty) return const [];
-    final q = [
+    // Files often say "Artist A; Artist B" or "X feat. Y": try each name.
+    final artists = [
+      for (final x in artist.split(
+        RegExp(r'\s*(?:;|,|&|/|\bfeat\.?|\bft\.?|\bfeaturing\b|\band\b|\bwith\b)\s*', caseSensitive: false),
+      ))
+        if (_q(x).isNotEmpty) _q(x),
+    ];
+    final whole = _q(artist);
+    final al = _q(album);
+    String loose(String s) => s.split(RegExp(r'\s+')).where((w) => w.length > 1).join(' ');
+    // Strict first, then looser until something matches.
+    final attempts = <String>{
+      if (al.isNotEmpty && whole.isNotEmpty) 'recording:"$t" AND artist:"$whole" AND release:"$al"',
+      if (whole.isNotEmpty) 'recording:"$t" AND artist:"$whole"',
+      for (final a in artists.take(3)) 'recording:"$t" AND artist:"$a"',
+      if (artists.isNotEmpty) 'recording:(${loose(t)}) AND artist:(${loose(artists.first)})',
+      if (artists.isNotEmpty)
+        'recording:(${loose(t)}) AND (${artists.map((a) => 'artist:(${loose(a)})').join(' OR ')})',
       'recording:"$t"',
-      if (_q(artist).isNotEmpty) 'artist:"${_q(artist)}"',
-      if (_q(album).isNotEmpty) 'release:"${_q(album)}"',
-    ].join(' AND ');
-    final data = await _get('recording', {'query': q, 'limit': '15'});
-    final recs = (data as Map?)?['recordings'] as List? ?? const [];
-    if (recs.isEmpty && album.isNotEmpty) {
-      // The album name is often what's wrong.
-      return search(title: title, artist: artist, length: length);
+    }.toList();
+    var recs = const <Object?>[];
+    for (final q in attempts.take(5)) {
+      final data = await _get('recording', {'query': q, 'limit': '15'});
+      recs = (data as Map?)?['recordings'] as List? ?? const [];
+      if (recs.isNotEmpty) break;
     }
     final out = <MbMatch>[];
     for (final r in recs.cast<Map<Object?, Object?>>()) {
       final score = (r['score'] as num?)?.toInt() ?? 0;
       final len = (r['length'] as num?)?.toInt();
-      final tags = (r['tags'] as List? ?? const []).cast<Map<Object?, Object?>>()
+      final tags = [...(r['tags'] as List? ?? const []).cast<Map<Object?, Object?>>()]
         ..sort((a, b) => ((b['count'] as num?) ?? 0).compareTo((a['count'] as num?) ?? 0));
       final genre = tags.isEmpty ? '' : _titleCase('${tags.first['name']}');
       final artistCredit = r['artist-credit'] as List?;
@@ -287,6 +302,9 @@ class MusicBrainz {
         v += off <= 3 ? 80 : (off <= 10 ? 30 : -120);
       }
       if (m.year.isNotEmpty) v += 5;
+      // The album the file says it's from (any of its words).
+      final words = album.toLowerCase().split(RegExp(r'\W+')).where((w) => w.length > 2);
+      if (words.isNotEmpty && words.any(m.album.toLowerCase().contains)) v += 40;
       return v;
     }
 
@@ -304,7 +322,7 @@ class MusicBrainz {
       List<Object?>? g = d?['genres'] as List?;
       if (g == null || g.isEmpty) g = (d?['release-group'] as Map?)?['genres'] as List<Object?>?;
       if (g == null || g.isEmpty) return '';
-      final list = g.cast<Map<Object?, Object?>>()
+      final list = [...g.cast<Map<Object?, Object?>>()]
         ..sort((a, b) => ((b['count'] as num?) ?? 0).compareTo((a['count'] as num?) ?? 0));
       return _titleCase('${list.first['name']}');
     } on Object catch (e) {

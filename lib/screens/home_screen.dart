@@ -20,6 +20,7 @@ IconData tabIcon(LibraryTab t, {bool selected = false}) => switch (t) {
   LibraryTab.years => Icons.calendar_month_rounded,
   LibraryTab.folders => selected ? Icons.folder_rounded : Icons.folder_outlined,
   LibraryTab.playlists => Icons.queue_music_rounded,
+  LibraryTab.podcasts => Icons.podcasts_rounded,
   LibraryTab.get => Icons.download_rounded,
 };
 

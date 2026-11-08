@@ -23,6 +23,9 @@ class Library extends ChangeNotifier {
   List<Collection> genres = const [];
   List<Collection> years = const [];
   List<Collection> folders = const [];
+
+  /// Podcast shows, episodes in each; kept out of the music tabs.
+  List<Collection> podcasts = const [];
   Map<int, Song> byId = const {};
 
   String _filter = '';
@@ -57,10 +60,12 @@ class Library extends ChangeNotifier {
     final min = settings.minSeconds;
     final include = settings.includeFolders;
     final exclude = settings.excludeFolders;
-    songs = _all
-        .where((s) => s.duration.inSeconds >= min && folderAllowed(s.path, include, exclude))
-        .toList();
-    byId = {for (final s in songs) s.id: s};
+    final allowed = _all.where((s) => folderAllowed(s.path, include, exclude)).toList();
+    final episodes = allowed.where((s) => s.podcast).toList();
+    songs = allowed.where((s) => !s.podcast && s.duration.inSeconds >= min).toList();
+    byId = {
+      for (final s in [...songs, ...episodes]) s.id: s,
+    };
     albums = _group(CollectionKind.album, (s) => '${s.albumId}', (s) => s.album, (s) => s.albumArtist);
     // Album tracks in disc / track order.
     for (final a in albums) {
@@ -85,6 +90,15 @@ class Library extends ChangeNotifier {
       (s) => s.folder,
       (s) => s.folder.split('/').last,
       (s) => s.folder,
+      from: [...songs, ...episodes],
+    );
+    podcasts = _group(
+      CollectionKind.podcast,
+      (s) => s.album.toLowerCase(),
+      (s) => s.album,
+      (s) => s.albumArtist,
+      from: episodes,
+      summary: (e) => '${e.first.albumArtist} · ${e.length} ${e.length == 1 ? 'episode' : 'episodes'}',
     );
     state = LibraryState.ready;
     notifyListeners();
@@ -101,9 +115,10 @@ class Library extends ChangeNotifier {
     String Function(Song) title,
     String Function(Song) subtitle, {
     String Function(List<Song>)? summary,
+    List<Song>? from,
   }) {
     final map = <String, List<Song>>{};
-    for (final s in songs) {
+    for (final s in from ?? songs) {
       (map[key(s)] ??= []).add(s);
     }
     return [

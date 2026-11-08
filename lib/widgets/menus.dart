@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import '../core/scope.dart';
 import '../screens/collection_screen.dart';
+import '../screens/podcast_screen.dart';
 import '../screens/fix_tags_sheet.dart';
 import '../screens/song_info_screen.dart';
 import 'art.dart';
 
-void openCollection(BuildContext context, Collection c) =>
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CollectionScreen(collection: c)));
+void openCollection(BuildContext context, Collection c) => Navigator.of(context).push(
+  MaterialPageRoute<void>(
+    builder: (_) =>
+        c.kind == CollectionKind.podcast ? PodcastScreen(show: c) : CollectionScreen(collection: c),
+  ),
+);
 
 void _toast(BuildContext context, String text) => ScaffoldMessenger.of(context)
   ..hideCurrentSnackBar()

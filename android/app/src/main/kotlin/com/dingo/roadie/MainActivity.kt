@@ -221,11 +221,13 @@ class MainActivity : AudioServiceActivity() {
             MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.TRACK, MediaStore.Audio.Media.YEAR, MediaStore.Audio.Media.DATE_ADDED,
             MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATA,
-            "album_artist",
+            "album_artist", MediaStore.Audio.Media.IS_PODCAST,
         )
         if (Build.VERSION.SDK_INT >= 30) base += listOf("genre", "disc_number")
         val out = ArrayList<Map<String, Any?>>()
-        contentResolver.query(uri, base.toTypedArray(), "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, null)?.use { c ->
+        // Music and podcasts (episodes in Podcasts/ folders aren't "music" to Android).
+        val where = "${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.IS_PODCAST} != 0"
+        contentResolver.query(uri, base.toTypedArray(), where, null, null)?.use { c ->
             fun str(name: String): String? = c.getColumnIndex(name).let { if (it < 0) null else c.getString(it) }
             fun num(name: String): Long = c.getColumnIndex(name).let { if (it < 0 || c.isNull(it)) 0L else c.getLong(it) }
             while (c.moveToNext()) {
@@ -247,6 +249,7 @@ class MainActivity : AudioServiceActivity() {
                     "added" to num(MediaStore.Audio.Media.DATE_ADDED),
                     "modified" to num(MediaStore.Audio.Media.DATE_MODIFIED),
                     "size" to num(MediaStore.Audio.Media.SIZE),
+                    "podcast" to num(MediaStore.Audio.Media.IS_PODCAST),
                 )
             }
         }

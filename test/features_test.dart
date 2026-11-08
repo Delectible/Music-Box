@@ -11,7 +11,9 @@ import 'package:roadie/core/metadata.dart';
 import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/sources.dart';
+import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/screens/podcast_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -61,7 +63,7 @@ void main() {
     expect(lib.songs.length, all - 10);
     s.includeFolders = ['/storage/emulated/0/Music/Mara Vell'];
     expect(lib.songs.every((x) => x.artist == 'Mara Vell'), isTrue);
-    expect(lib.unfiltered.length, all);
+    expect(lib.unfiltered.where((s) => !s.podcast).length, all);
   });
 
   test('download paths: Artist/Album/NN Title.ext, safe names', () {
@@ -216,5 +218,27 @@ void main() {
     expect(eps.first.album, 'Road Talk');
     expect(eps.first.lookUp, isFalse);
     expect(eps.last.ext, 'm4a');
+  });
+
+  test('podcasts: their own tab, out of the music, episodes in order', () async {
+    SharedPreferences.setMockInitialValues({
+      // Someone who saved their tabs before Podcasts existed still gets it.
+      'tabs': ['albums', 'songs', 'get'],
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final s = Settings(prefs);
+    expect(s.tabs, [LibraryTab.albums, LibraryTab.songs, LibraryTab.podcasts, LibraryTab.get]);
+    s.tabs = [LibraryTab.albums, LibraryTab.songs, LibraryTab.get];
+    expect(s.tabs.contains(LibraryTab.podcasts), isFalse); // switched off stays off
+    final lib = Library(DemoSource(), s);
+    await lib.load();
+    expect(lib.songs.any((x) => x.podcast), isFalse);
+    expect(lib.albums.any((a) => a.title == 'Road Talk'), isFalse);
+    final show = lib.podcasts.single;
+    expect(show.title, 'Road Talk');
+    expect(show.subtitle, 'Jo Host · 5 episodes');
+    expect(sortEpisodes(show.songs, 'newest').first.title, 'Last Exit');
+    expect(sortEpisodes(show.songs, 'oldest').first.title, 'Maps and Shortcuts');
+    expect(sortEpisodes(show.songs, 'title').first.title, 'Fuel Stops');
   });
 }

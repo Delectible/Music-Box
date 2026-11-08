@@ -17,6 +17,9 @@ class Song {
   final DateTime modified;
   final int size; // bytes
 
+  /// A podcast episode (Android says so, or the genre is Podcast).
+  final bool podcast;
+
   const Song({
     required this.id,
     required this.uri,
@@ -34,6 +37,7 @@ class Song {
     required this.added,
     required this.modified,
     required this.size,
+    this.podcast = false,
   });
 
   String get folder {
@@ -71,12 +75,13 @@ class Song {
       added: DateTime.fromMillisecondsSinceEpoch(n('added') * 1000),
       modified: DateTime.fromMillisecondsSinceEpoch(n('modified') * 1000),
       size: n('size'),
+      podcast: n('podcast') != 0 || s('genre').toLowerCase() == 'podcast',
     );
   }
 }
 
 /// What a group of songs is collected by.
-enum CollectionKind { album, artist, albumArtist, genre, folder, playlist, year }
+enum CollectionKind { album, artist, albumArtist, genre, folder, playlist, year, podcast }
 
 /// A group of songs: an album, artist, genre, folder, year or playlist.
 class Collection {

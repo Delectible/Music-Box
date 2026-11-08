@@ -163,6 +163,32 @@ class DemoSource implements LibrarySource {
         id++;
       }
     }
+    // A podcast, kept apart from the music.
+    const eps = ['Maps and Shortcuts', 'The Long Way Home', 'Night Radio', 'Fuel Stops', 'Last Exit'];
+    for (var e = 0; e < eps.length; e++) {
+      final path = '/storage/emulated/0/Podcasts/Road Talk/${e + 1} ${eps[e]}.mp3';
+      out.add(
+        Song(
+          id: id++,
+          uri: path,
+          path: path,
+          title: eps[e],
+          artist: 'Jo Host',
+          album: 'Road Talk',
+          albumArtist: 'Jo Host',
+          albumId: 99,
+          genre: 'Podcast',
+          year: 2026,
+          track: e + 1,
+          disc: 1,
+          duration: Duration(minutes: 30 + e * 4),
+          added: DateTime(2026, 1, 1 + e * 7),
+          modified: DateTime(2026, 1, 1 + e * 7),
+          size: 30000000,
+          podcast: true,
+        ),
+      );
+    }
     return out;
   }
 }
