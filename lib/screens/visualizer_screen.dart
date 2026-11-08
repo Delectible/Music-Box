@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/native.dart';
 import '../core/scope.dart';
+import '../core/theme.dart';
 import '../core/visualizer.dart';
 import '../widgets/art.dart';
 import '../widgets/controls.dart';
@@ -129,7 +130,9 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
                 builder: (context, box) {
                   final short = min(box.maxWidth, box.maxHeight);
                   final cover = short * 0.46;
-                  return Stack(
+                  // Changing style cross-fades the old picture into the new one.
+                  final picture = Stack(
+                    key: ValueKey(style),
                     fit: StackFit.expand,
                     children: [
                       RepaintBoundary(
@@ -169,6 +172,22 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
                             ),
                           ),
                         ),
+                    ],
+                  );
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(
+                        color: Colors.black,
+                        child: AnimatedSwitcher(
+                          duration: motion(AppScope.of(context).settings, 600),
+                          switchInCurve: Curves.easeInOut,
+                          switchOutCurve: Curves.easeInOut,
+                          layoutBuilder: (current, previous) =>
+                              Stack(fit: StackFit.expand, children: [...previous, ?current]),
+                          child: picture,
+                        ),
+                      ),
                       AnimatedOpacity(
                         opacity: _controls ? 1 : 0,
                         duration: const Duration(milliseconds: 250),

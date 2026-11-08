@@ -164,6 +164,16 @@ void main() {
       await _settle(tester, 4600);
       await shot(tester, 'car_viz_${v.index + 1}_${v.name}');
     }
+    // Styles cross-fade: halfway through, both are on screen.
+    a.settings.visualizer = VizStyle.bars.name;
+    await _settle(tester, 1000);
+    a.settings.visualizer = VizStyle.scope.name;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await shot(tester, 'car_viz_fade');
+    await _settle(tester, 800);
+    a.settings.visualizer = VizStyle.waterfall.name;
+    await _settle(tester);
     // Swipe to the next style.
     await tester.flingFrom(const Offset(900, 360), const Offset(-500, 0), 2000);
     await _settle(tester);

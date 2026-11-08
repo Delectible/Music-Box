@@ -67,6 +67,7 @@
    artist was searched as one exact phrase ("A; B") and the album had to
    match; now tries each artist, then looser searches, until something
    matches; also fixed a crash on matches without tags.)
+25. Fade between visualiser styles. (0.2.7: 0.6 s cross-fade.)
 
 ## Ideas
 
