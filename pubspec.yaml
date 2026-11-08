@@ -1,0 +1,38 @@
+name: roadie
+description: >-
+  A simple, customisable music player built for car screens: big controls,
+  a full screen drive player, lots of ways to sort and view your library.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Playback (gapless queue) and the media session: notification, lock
+  # screen, steering wheel and Bluetooth buttons.
+  just_audio: ^0.10.6
+  audio_service: ^0.18.19
+  # Settings, last queue, play counts.
+  shared_preferences: ^2.5.6
+  # Keep the screen on in the drive player (Settings).
+  wakelock_plus: ^1.8.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Jost
+      fonts:
+        - asset: assets/fonts/Jost-400.ttf
+        - asset: assets/fonts/Jost-500.ttf
+          weight: 500
+        - asset: assets/fonts/Jost-600.ttf
+          weight: 600
