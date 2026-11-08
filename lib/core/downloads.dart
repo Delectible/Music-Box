@@ -8,11 +8,19 @@ import 'http.dart';
 import 'library.dart';
 import 'metadata.dart';
 import 'native.dart';
+import 'playlists.dart';
 import 'settings.dart';
 import 'sources.dart';
 import 'tag_fixer.dart';
 
 enum JobState { queued, downloading, tagging, done, failed, skipped }
+
+/// Songs downloaded together that become a playlist once all are done.
+class _Batch {
+  final String playlist;
+  final List<DownloadJob> jobs;
+  _Batch(this.playlist, this.jobs);
+}
 
 class DownloadJob {
   final RemoteTrack track;
@@ -35,7 +43,10 @@ class DownloadJob {
 class Downloads extends ChangeNotifier {
   final Settings settings;
   final Library library;
-  Downloads(this.settings, this.library);
+  final Playlists playlists;
+  Downloads(this.settings, this.library, this.playlists);
+
+  final _batches = <_Batch>[];
 
   final jobs = <DownloadJob>[];
   int _running = 0;
@@ -64,8 +75,12 @@ class Downloads extends ChangeNotifier {
     return f.isNotEmpty ? f : '${await Native.musicDir()}/Roadie';
   }
 
-  void add(List<RemoteTrack> tracks) {
-    jobs.addAll(tracks.map(DownloadJob.new));
+  /// Queues [tracks]; with [playlist], they're saved as that playlist (in
+  /// this order) once they've all finished.
+  void add(List<RemoteTrack> tracks, {String? playlist}) {
+    final added = tracks.map(DownloadJob.new).toList();
+    jobs.addAll(added);
+    if (playlist != null && playlist.trim().isNotEmpty) _batches.add(_Batch(playlist.trim(), added));
     notifyListeners();
     _pump();
   }
@@ -136,6 +151,7 @@ class Downloads extends ChangeNotifier {
         j.state = JobState.skipped;
         j.error = 'Already downloaded';
         notifyListeners();
+        if (_newFiles.isEmpty && !(_rescan?.isActive ?? false)) _makePlaylists();
         return;
       }
       var last = DateTime.now();
@@ -181,6 +197,17 @@ class Downloads extends ChangeNotifier {
     } on Object catch (e, st) {
       j.state = JobState.failed;
       j.note = null;
+      if (e is NotMusicFile) {
+        // Nothing worth keeping.
+        final p = j.path;
+        if (p != null) {
+          for (final f in [File(p), File('$p.part')]) {
+            if (f.existsSync()) f.deleteSync();
+          }
+        }
+      }
+      // A batch whose last song failed still becomes a playlist of the rest.
+      if (_newFiles.isEmpty && !(_rescan?.isActive ?? false)) scheduleMicrotask(_makePlaylists);
       j.error = j.cancelled ? 'Cancelled' : friendlyError(e);
       if (!j.cancelled) CrashLog.record(e, st, where: 'download ${t.url}');
     }
@@ -252,5 +279,25 @@ class Downloads extends ChangeNotifier {
     final files = [..._newFiles];
     _newFiles.clear();
     await rescan(library, files);
+    _makePlaylists();
+  }
+
+  /// Batches whose songs have all finished become playlists, in their order.
+  void _makePlaylists() {
+    for (final b in [..._batches]) {
+      if (b.jobs.any((j) => j.active)) continue;
+      final byPath = {for (final s in library.unfiltered) s.path: s};
+      final songs = [
+        for (final j in b.jobs)
+          if (j.path != null && (j.state == JobState.done || j.state == JobState.skipped)) ?byPath[j.path],
+      ];
+      // Not in the library yet (scan still going): try again after the next rescan.
+      final expected = b.jobs.where((j) => j.state == JobState.done || j.state == JobState.skipped).length;
+      if (songs.length < expected && (_rescan?.isActive ?? false)) continue;
+      _batches.remove(b);
+      if (songs.isEmpty) continue;
+      final existing = playlists.all.where((p) => p.name == b.playlist).firstOrNull;
+      playlists.add(existing ?? playlists.create(b.playlist), songs);
+    }
   }
 }

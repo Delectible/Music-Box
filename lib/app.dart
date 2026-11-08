@@ -37,7 +37,7 @@ class RoadieApp extends StatefulWidget {
 class _RoadieAppState extends State<RoadieApp> {
   late final _accent = Accent(widget.settings, widget.player, widget.library);
   final _nav = GlobalKey<NavigatorState>();
-  late final _downloads = Downloads(widget.settings, widget.library);
+  late final _downloads = Downloads(widget.settings, widget.library, widget.playlists);
   late final _fixer = TagFixer(widget.library);
   late final _preview = Preview(widget.player);
 

@@ -384,7 +384,28 @@ class CcMixter extends MusicSource {
   Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
 }
 
+/// The link is a web page: look for music files on it in the browser.
+class LinkIsPage implements Exception {
+  final Uri url;
+  LinkIsPage(this.url);
+}
+
+/// A link Roadie won't download from, with the reason in plain words.
+class UnsupportedLink implements Exception {
+  final String message;
+  UnsupportedLink(this.message);
+  @override
+  String toString() => message;
+}
+
+bool isYouTube(Uri u) {
+  final h = u.host.toLowerCase();
+  return h == 'youtu.be' || h == 'youtube.com' || h.endsWith('.youtube.com') || h == 'youtube-nocookie.com';
+}
+
 /// Any direct link to an audio file. Tags come from the name, then MusicBrainz.
+/// The link is checked first: a web page opens in the browser instead, and
+/// anything that isn't music is refused (nothing is downloaded).
 class DirectLink extends MusicSource {
   @override
   String get id => 'link';
@@ -397,11 +418,37 @@ class DirectLink extends MusicSource {
 
   static const audioExts = {'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wav'};
 
+  /// Checks what [uri] points at (null: skip the check, for tests).
+  final Future<LinkInfo> Function(Uri)? probe;
+  DirectLink({this.probe = Http.probe});
+
   @override
   Future<List<RemoteItem>> search(String query) async {
-    final uri = Uri.tryParse(query.trim());
-    if (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http')) return const [];
-    final name = Uri.decodeComponent(uri.pathSegments.isEmpty ? 'download' : uri.pathSegments.last);
+    var text = query.trim();
+    if (!text.contains('://') && RegExp(r'^[\w-]+(\.[\w-]+)+(/|$)').hasMatch(text)) text = 'https://$text';
+    final uri = Uri.tryParse(text);
+    if (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http') || uri.host.isEmpty) return const [];
+    if (isYouTube(uri)) {
+      throw UnsupportedLink(
+        'YouTube links can\'t be downloaded: YouTube only streams in its own players and doesn\'t offer files.',
+      );
+    }
+    String? served;
+    final check = probe;
+    if (check != null) {
+      final info = await check(uri);
+      switch (info.kind) {
+        case LinkKind.page:
+          throw LinkIsPage(uri);
+        case LinkKind.other:
+          throw UnsupportedLink(
+            'That link isn\'t a music file (${info.type.isEmpty ? 'unknown type' : info.type}).',
+          );
+        case LinkKind.music:
+          served = info.fileName;
+      }
+    }
+    final name = served ?? Uri.decodeComponent(uri.pathSegments.isEmpty ? 'download' : uri.pathSegments.last);
     final dot = name.lastIndexOf('.');
     final ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : 'mp3';
     final title = dot > 0 ? name.substring(0, dot) : name;

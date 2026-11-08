@@ -46,6 +46,14 @@
 18. Internet Archive results unrelated to the search. (0.2.3: radio /
    podcast / audiobook collections left out; ranked by how much of the
    search is in the title and artist, then popularity.)
+19. A YouTube link "downloaded" a broken file. (0.2.4: links are checked
+   first: music downloads, web pages open in the browser, anything else is
+   refused; every download's first bytes must be audio or it's deleted.)
+20. YouTube links and whole playlists. Declined: YouTube doesn't offer
+   files; ripping its streams goes against its terms and the rights of
+   the music on it. YouTube links say so instead of failing.
+21. Keep a group of downloads together as a playlist. (0.2.4: asked when
+   downloading more than one song; made in order once they're done.)
 
 ## Ideas
 

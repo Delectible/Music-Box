@@ -79,12 +79,30 @@ void main() {
   });
 
   test('direct links become one track', () async {
-    final r = await DirectLink().search('https://example.org/music/Some%20Band%20-%20Song.flac');
+    final r = await DirectLink(probe: null).search('https://example.org/music/Some%20Band%20-%20Song.flac');
     expect(r.single.single, isTrue);
-    final t = (await DirectLink().tracks(r.single)).single;
+    final t = (await DirectLink(probe: null).tracks(r.single)).single;
     expect(t.ext, 'flac');
     expect(t.title, 'Some Band - Song');
-    expect(await DirectLink().search('not a link'), isEmpty);
+    expect(await DirectLink(probe: null).search('not a link'), isEmpty);
+    // YouTube, web pages and other files are never "downloaded".
+    expect(DirectLink(probe: null).search('https://youtu.be/abc123'), throwsA(isA<UnsupportedLink>()));
+    expect(
+      DirectLink(
+        probe: (_) async => const LinkInfo(LinkKind.page, 'text/html', null),
+      ).search('https://e.org/album'),
+      throwsA(isA<LinkIsPage>()),
+    );
+    expect(
+      DirectLink(
+        probe: (_) async => const LinkInfo(LinkKind.other, 'application/pdf', null),
+      ).search('https://e.org/x'),
+      throwsA(isA<UnsupportedLink>()),
+    );
+    final named = await DirectLink(
+      probe: (_) async => const LinkInfo(LinkKind.music, 'audio/flac', 'Real Name.flac'),
+    ).search('https://e.org/dl?id=7');
+    expect(named.single.title, 'Real Name');
   });
 
   test('visualiser: decodes Android FFT data', () {
@@ -165,5 +183,15 @@ void main() {
     final back = CustomSite.decode(CustomSite.encode([site])).single;
     expect(back.search, site.search);
     expect(CustomSite.decode('not json'), isEmpty);
+  });
+
+  test('only real music is saved', () {
+    expect(looksLikeAudio('ID3\x04\x00'.codeUnits, ''), isTrue);
+    expect(looksLikeAudio('fLaC\x00\x00'.codeUnits, ''), isTrue);
+    expect(looksLikeAudio([0, 0, 0, 0x20, ...'ftypM4A '.codeUnits], ''), isTrue);
+    expect(looksLikeAudio([0xFF, 0xFB, 0x90, 0x64], 'application/octet-stream'), isTrue);
+    expect(looksLikeAudio('<!DOCTYPE html><html>'.codeUnits, 'text/html'), isFalse);
+    expect(looksLikeAudio('{"error":1}'.codeUnits, 'application/json'), isFalse);
+    expect(looksLikeAudio('random bytes here'.codeUnits, 'application/octet-stream'), isFalse);
   });
 }

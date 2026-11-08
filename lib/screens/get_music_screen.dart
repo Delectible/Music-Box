@@ -37,6 +37,7 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
   final _query = TextEditingController();
   Map<String, _Result>? _results;
   String _searched = '';
+  bool _checking = false;
   int _searchId = 0;
 
   List<String> _ticked(List<MusicSource> builtIn, List<CustomSite> sites) {
@@ -66,12 +67,38 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
     final id = ++_searchId;
     if (ticked.contains('link')) {
       final link = sources.firstWhere((x) => x.id == 'link');
-      final r = await link.search(q);
-      if (!mounted) return;
-      if (r.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That isn\'t a web link')));
-      } else {
-        await openRemoteItem(context, link, r.first);
+      final messenger = ScaffoldMessenger.of(context);
+      setState(() => _checking = true);
+      try {
+        final r = await link.search(q);
+        if (!mounted) return;
+        if (r.isEmpty) {
+          messenger.showSnackBar(const SnackBar(content: Text('That isn\'t a web link')));
+        } else {
+          await openRemoteItem(context, link, r.first);
+        }
+      } on LinkIsPage catch (e) {
+        // A web page: look for the music on it.
+        if (!mounted) return;
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('That\'s a web page, not a music file. Looking for music files on it…'),
+          ),
+        );
+        openBrowser(context, url: e.url, siteName: e.url.host);
+      } on Object catch (e, st) {
+        if (e is! UnsupportedLink) CrashLog.record(e, st, where: 'link $q');
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Can\'t download that'),
+            content: Text(e is UnsupportedLink ? e.message : friendlyError(e)),
+            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => _checking = false);
       }
       return;
     }
@@ -235,7 +262,8 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                 ),
               ),
             ),
-            if (_results?.values.any((r) => r.loading) ?? false) const LinearProgressIndicator(),
+            if (_checking || (_results?.values.any((r) => r.loading) ?? false))
+              const LinearProgressIndicator(),
             Expanded(child: _body(context, sources, sites, ticked)),
           ],
         );
@@ -596,7 +624,14 @@ class _ItemScreenState extends State<_ItemScreen> {
       for (var i = 0; i < t.length; i++)
         if (_picked.contains(i)) t[i],
     ];
-    scope.downloads.add(list);
+    String? playlist;
+    if (list.length > 1) {
+      if (!mounted) return;
+      final choice = await _askPlaylist(context, widget.item.title);
+      if (choice == null) return; // cancelled
+      playlist = choice.isEmpty ? null : choice;
+    }
+    scope.downloads.add(list, playlist: playlist);
     final folder = await scope.downloads.folder();
     messenger.showSnackBar(
       SnackBar(
@@ -604,6 +639,51 @@ class _ItemScreenState extends State<_ItemScreen> {
         action: SnackBarAction(label: 'Show', onPressed: () => openDownloads(context)),
       ),
     );
+  }
+
+  /// Null: cancelled. Empty: just download. Otherwise the playlist name.
+  static Future<String?> _askPlaylist(BuildContext context, String suggested) async {
+    final name = TextEditingController(text: suggested);
+    var make = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, set) => AlertDialog(
+          title: const Text('Keep them together?'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Also save as a playlist'),
+                  subtitle: const Text('In this order, in Playlists, once they\'ve downloaded'),
+                  value: make,
+                  onChanged: (v) => set(() => make = v),
+                ),
+                if (make)
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(
+                      labelText: 'Playlist name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Download')),
+          ],
+        ),
+      ),
+    );
+    final n = name.text.trim();
+    name.dispose();
+    if (ok != true) return null;
+    return make ? (n.isEmpty ? suggested : n) : '';
   }
 
   @override
