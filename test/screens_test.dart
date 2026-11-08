@@ -11,6 +11,8 @@ import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/core/lyrics.dart';
+import 'package:roadie/core/quality.dart';
 import 'package:roadie/screens/folders_screen.dart';
 import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
@@ -301,6 +303,53 @@ void main() {
     await _settle(tester);
     expect(find.text('Last Exit'), findsOneWidget);
     await shot(tester, 'car_13_podcast_show');
+    a.engine.close();
+  });
+
+  testWidgets('player extras: quality badge, lyrics, smart playlists', (tester) async {
+    setScreen(tester, car);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('roadie/library'),
+      (call) async => call.method == 'readTags'
+          ? {'format': 'FLAC 24 bits', 'sampleRate': '96000', 'bitsPerSample': 24, 'lossless': true}
+          : null,
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('roadie/library'),
+        null,
+      ),
+    );
+    Quality.clearCache();
+    final a = await _app({'playerStyle': PlayerStyle.cover.name});
+    final song = a.library.albums[0].songs[3];
+    Lyrics.preload(
+      song.id,
+      Lyrics(
+        lines: Lyrics.parseLrc(
+          '[00:00.00]Headlights on the water\n[00:20.00]The radio low and warm\n'
+          '[00:40.00]Every exit sign a promise\n[01:00.00]Coastline at 2am\n'
+          '[01:20.00]We drive until the morning\n[01:40.00]Nothing left to say',
+        ),
+        source: 'LRCLIB',
+      ),
+    );
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await _tab(tester, 'Playlists');
+    expect(find.text('Smart playlists'), findsOneWidget);
+    await shot(tester, 'car_14_playlists_smart');
+    await a.player.playAll(a.library.albums[0].songs, start: 3);
+    a.engine.advance(const Duration(seconds: 66));
+    await _settle(tester);
+    PlayerSheet.open(tester.element(find.byType(Scaffold).first));
+    await _settle(tester, 2000);
+    expect(find.textContaining('Hi-Res FLAC 24-bit'), findsOneWidget);
+    await shot(tester, 'car_player_badge');
+    await tester.tap(find.byTooltip('Lyrics'));
+    await _settle(tester, 1500);
+    expect(find.text('Coastline at 2am'), findsWidgets);
+    await shot(tester, 'car_15_lyrics');
     a.engine.close();
   });
 }

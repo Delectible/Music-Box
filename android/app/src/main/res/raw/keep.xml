@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icons the media notification looks up by name: don't let the shrinker drop them. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_roadie,@drawable/ic_fav,@drawable/ic_fav_on" />

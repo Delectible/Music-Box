@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../core/scope.dart';
+import '../core/smart.dart';
 import '../core/sorting.dart';
 import '../widgets/menus.dart';
 import '../widgets/tiles.dart';
@@ -40,6 +41,30 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
         if (widget.tab == LibraryTab.songs) {
           final songs = sortSongs(lib.songs, opts.sort, opts.descending, scope.player);
           slivers.add(SliverToBoxAdapter(child: _PlayBar(songs: songs)));
+          final favs = [for (final id in scope.playlists.favs.songIds) ?lib.byId[id]];
+          if (scope.settings.favouritesShelf && favs.isNotEmpty) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: _Shelf(
+                  title: 'Favourites',
+                  icon: Icons.favorite_rounded,
+                  onPlay: () => scope.player.playAll(favs),
+                  items: [
+                    for (final s in favs)
+                      Collection(
+                        kind: CollectionKind.album,
+                        key: 'fav${s.id}',
+                        title: s.title,
+                        subtitle: s.artist,
+                        songs: [s],
+                        artAlbumId: s.albumId,
+                      ),
+                  ],
+                  onTap: (i) => scope.player.playAll(favs, start: i),
+                ),
+              ),
+            );
+          }
           slivers.addAll(_songSlivers(context, songs, opts));
         } else {
           final items = switch (widget.tab) {
@@ -53,6 +78,22 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
             _ => const <Collection>[],
           };
           final sorted = sortCollections(items, opts.sort, opts.descending, scope.player);
+          if (widget.tab == LibraryTab.playlists) {
+            final smart = smartPlaylists(lib, scope.player, scope.playlists);
+            if (smart.isNotEmpty) {
+              slivers.add(
+                SliverToBoxAdapter(
+                  child: _Shelf(
+                    title: 'Smart playlists',
+                    icon: Icons.auto_awesome_rounded,
+                    items: smart,
+                    onTap: (i) => openCollection(context, smart[i]),
+                  ),
+                ),
+              );
+              slivers.add(const SliverToBoxAdapter(child: SectionHeader('Your playlists')));
+            }
+          }
           slivers.addAll(_collectionSlivers(context, sorted, opts));
         }
         slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 120)));
@@ -265,7 +306,7 @@ class _PlayBar extends StatelessWidget {
 
 /// Opens the full screen player (set by the shell).
 class PlayerSheet {
-  static void Function(BuildContext)? opener;
+  static void Function(BuildContext?)? opener;
   static void open(BuildContext context) => opener?.call(context);
 }
 
@@ -367,3 +408,63 @@ IconData _modeIcon(ViewMode m) => switch (m) {
   ViewMode.grid => Icons.grid_view_rounded,
   ViewMode.cards => Icons.view_module_rounded,
 };
+
+/// A row of covers to scroll sideways: favourites, smart playlists.
+class _Shelf extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<Collection> items;
+  final void Function(int) onTap;
+  final VoidCallback? onPlay;
+  const _Shelf({
+    required this.title,
+    required this.icon,
+    required this.items,
+    required this.onTap,
+    this.onPlay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final big = MediaQuery.sizeOf(context).width > 900;
+    final w = big ? 170.0 : 140.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
+          child: Row(
+            children: [
+              Icon(icon, color: cs.primary, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              if (onPlay != null)
+                TextButton.icon(
+                  onPressed: onPlay,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Play'),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: w + 64,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            itemCount: items.length,
+            itemBuilder: (context, i) => SizedBox(
+              width: w,
+              child: CollectionCard(item: items[i], onTap: () => onTap(i)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

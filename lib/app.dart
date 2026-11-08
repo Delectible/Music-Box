@@ -50,9 +50,18 @@ class _RoadieAppState extends State<RoadieApp> {
     unawaited(warmCover(ctx, id));
   }
 
+  // Day & night theme: look at the clock every minute.
+  Timer? _clock;
+  bool _night = false;
+
   @override
   void initState() {
     super.initState();
+    _night = widget.settings.isNight();
+    _clock = Timer.periodic(const Duration(minutes: 1), (_) {
+      final n = widget.settings.isNight();
+      if (n != _night && mounted) setState(() => _night = n);
+    });
     widget.player.addListener(_warm);
     PlayerSheet.opener = (_) {
       final nav = _nav.currentState;
@@ -63,6 +72,7 @@ class _RoadieAppState extends State<RoadieApp> {
 
   @override
   void dispose() {
+    _clock?.cancel();
     widget.player.removeListener(_warm);
     _accent.dispose();
     _downloads.dispose();
@@ -92,7 +102,7 @@ class _RoadieAppState extends State<RoadieApp> {
             debugShowCheckedModeBanner: false,
             themeMode: s.themeMode,
             theme: buildTheme(Brightness.light, accent),
-            darkTheme: buildTheme(Brightness.dark, accent, black: s.theme == ThemeChoice.black),
+            darkTheme: buildTheme(Brightness.dark, accent, black: s.blackNow),
             themeAnimationDuration: motion(s, 500),
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(s.textScale)),

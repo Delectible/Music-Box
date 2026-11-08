@@ -69,6 +69,12 @@ Future<void> showSongMenu(BuildContext context, Song song) {
           if (a != null) openCollection(context, a);
         },
       ),
+      if (song.podcast)
+        (
+          scope.player.isPlayed(song.id) ? Icons.remove_done_rounded : Icons.done_all_rounded,
+          scope.player.isPlayed(song.id) ? 'Mark as not played' : 'Mark as played',
+          () => scope.player.markPlayed(song.id, !scope.player.isPlayed(song.id)),
+        ),
       (Icons.info_outline_rounded, 'Song info', () => openSongInfo(context, song)),
       (Icons.auto_fix_high_rounded, 'Fix tags…', () => showFixTags(context, song)),
     ],

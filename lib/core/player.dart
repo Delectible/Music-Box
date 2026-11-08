@@ -57,7 +57,10 @@ class Player extends ChangeNotifier implements PlayHistory {
         if (p == playing) return;
         playing = p;
         notifyListeners();
-        if (!p) _saveState();
+        if (!p) {
+          _saveState();
+          if (current?.podcast ?? false) _savePodcasts();
+        }
       }),
       engine.positionStream.listen(_onPosition),
       engine.durationStream.listen((d) {
@@ -68,6 +71,7 @@ class Player extends ChangeNotifier implements PlayHistory {
     engine.onToggleShuffle = () => setShuffle(!shuffle);
     engine.onCycleRepeat = cycleRepeat;
     _loadHistory();
+    _loadPodcasts();
   }
 
   late final List<StreamSubscription<Object?>> _subs;
@@ -113,7 +117,10 @@ class Player extends ChangeNotifier implements PlayHistory {
     duration = current!.duration;
     position.value = Duration.zero;
     notifyListeners();
-    await engine.load(queue, index, Duration.zero);
+    _lastSong = current;
+    final at = current!.podcast ? resumeAt(current!.id) : null;
+    if (at != null) position.value = at;
+    await engine.load(queue, index, at ?? Duration.zero);
     await engine.play();
     _saveQueue();
   }
@@ -235,14 +242,83 @@ class Player extends ChangeNotifier implements PlayHistory {
       _last[song.id] = DateTime.now().millisecondsSinceEpoch;
       _saveHistory();
     }
+    if (song.podcast) {
+      // Played once 90% is heard; where you are is kept for next time.
+      if (duration > Duration.zero &&
+          p.inMilliseconds >= duration.inMilliseconds * 0.9 &&
+          !_played.contains(song.id)) {
+        _played.add(song.id);
+        _episodePos.remove(song.id);
+        _savePodcasts();
+        notifyListeners();
+      } else if (!_played.contains(song.id) && p > const Duration(seconds: 5)) {
+        _episodePos[song.id] = p.inMilliseconds;
+      }
+    }
     if (playing && DateTime.now().difference(_lastSave).inSeconds >= 10) _saveState();
   }
 
   void _onSongChanged() {
+    final prev = _lastSong;
+    if (prev != null && prev.podcast) _savePodcasts();
     duration = current?.duration ?? Duration.zero;
     position.value = Duration.zero;
+    _lastSong = current;
     notifyListeners();
     _saveState();
+    _resumeEpisode();
+  }
+
+  Song? _lastSong;
+
+  /// A podcast episode carries on from where it was left.
+  void _resumeEpisode() {
+    final s = current;
+    if (s == null || !s.podcast) return;
+    final at = resumeAt(s.id);
+    if (at != null) unawaited(seek(at));
+  }
+
+  // Podcasts: where each episode was left, and which are played.
+
+  final _episodePos = <int, int>{};
+  final _played = <int>{};
+
+  /// Where to carry on [songId] from (null: from the start).
+  Duration? resumeAt(int songId) {
+    final ms = _episodePos[songId];
+    return ms == null || ms < 5000 ? null : Duration(milliseconds: ms);
+  }
+
+  bool isPlayed(int songId) => _played.contains(songId);
+
+  void markPlayed(int songId, bool played) {
+    played ? _played.add(songId) : _played.remove(songId);
+    if (played) _episodePos.remove(songId);
+    _savePodcasts();
+    notifyListeners();
+  }
+
+  void _savePodcasts() {
+    _prefs.setString(
+      'podcasts',
+      jsonEncode({
+        'pos': {for (final e in _episodePos.entries) '${e.key}': e.value},
+        'played': _played.toList(),
+      }),
+    );
+  }
+
+  void _loadPodcasts() {
+    try {
+      final m = jsonDecode(_prefs.getString('podcasts') ?? '{}') as Map<String, Object?>;
+      for (final e in ((m['pos'] as Map?) ?? const {}).entries) {
+        _episodePos[int.parse('${e.key}')] = (e.value as num).toInt();
+      }
+      _played.addAll(((m['played'] as List?) ?? const []).cast<num>().map((n) => n.toInt()));
+    } on Object {
+      // Start fresh.
+    }
   }
 
   final _plays = <int, int>{};

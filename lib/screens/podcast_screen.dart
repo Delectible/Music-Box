@@ -6,8 +6,8 @@ import '../core/scope.dart';
 import '../widgets/art.dart';
 import '../widgets/menus.dart';
 import '../widgets/mini_player.dart';
-import 'library_view.dart';
 import '../widgets/tiles.dart';
+import 'library_view.dart';
 
 /// Episodes in [order]: newest / oldest (episode number, then when added),
 /// by number, or by title.
@@ -55,8 +55,8 @@ class PodcastScreen extends StatelessWidget {
         final now = scope.library.podcasts.where((p) => p.key == show.key).firstOrNull ?? show;
         final p = scope.player;
         final all = sortEpisodes(now.songs, s.episodeOrder);
-        final unplayed = all.where((e) => p.plays(e.id) == 0).length;
-        final eps = s.unplayedOnly ? all.where((e) => p.plays(e.id) == 0).toList() : all;
+        final unplayed = all.where((e) => !p.isPlayed(e.id)).length;
+        final eps = s.unplayedOnly ? all.where((e) => !p.isPlayed(e.id)).toList() : all;
 
         void play(int i) {
           p.playAll(eps, start: i);
@@ -156,12 +156,7 @@ class PodcastScreen extends StatelessWidget {
               showArt: false,
               number: eps[i].track > 0 ? eps[i].track : null,
               onTap: () => play(i),
-              trailing: p.plays(eps[i].id) > 0
-                  ? Tooltip(
-                      message: 'Played',
-                      child: Icon(Icons.check_circle_rounded, color: cs.primary),
-                    )
-                  : null,
+              trailing: _EpisodeState(song: eps[i]),
             ),
           const SizedBox(height: 120),
         ];
@@ -186,6 +181,42 @@ class PodcastScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Played (tick), part-heard (ring and time left) or new.
+class _EpisodeState extends StatelessWidget {
+  final Song song;
+  const _EpisodeState({required this.song});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppScope.of(context).player;
+    final cs = Theme.of(context).colorScheme;
+    if (p.isPlayed(song.id)) {
+      return Tooltip(
+        message: 'Played',
+        child: Icon(Icons.check_circle_rounded, color: cs.primary),
+      );
+    }
+    final at = p.resumeAt(song.id);
+    if (at == null || song.duration == Duration.zero) return const SizedBox(width: 24);
+    final left = song.duration - at;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('${left.inMinutes} min left', style: TextStyle(color: cs.onSurfaceVariant)),
+        const SizedBox(width: 8),
+        SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(
+            value: (at.inMilliseconds / song.duration.inMilliseconds).clamp(0, 1),
+            strokeWidth: 3,
+            backgroundColor: cs.onSurface.withValues(alpha: 0.12),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -19,7 +19,8 @@ then `flutter pub get`.
 - `lib/core/player.dart`: the queue (the play order; shuffle reorders it and
   keeps the original), play counts, saving / restoring the last queue.
   Talks to an `Engine`.
-- `lib/core/audio.dart`: the real engine: just_audio (gapless queue) inside
+- `lib/core/audio.dart`: the real engine (two decks for crossfade; per-song
+  gain / speed / silence skipping via `SongSound`): just_audio (gapless queue) inside
   an audio_service handler (notification, lock screen, steering wheel and
   Bluetooth buttons).
 - `lib/core/settings.dart`: every setting, saved as it changes.
@@ -40,6 +41,10 @@ then `flutter pub get`.
   `PageSource` item (same preview / download screen).
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
+- `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain
+  or measured LUFS, cached in prefs `gains`).
+- `lib/core/lyrics.dart`, `quality.dart`, `smart.dart`: lyrics (LRCLIB /
+  .lrc), quality badge, smart playlists and the duplicate finder.
 - `lib/core/crash_log.dart`: Dart and native errors to
   `files/problems.log` and `native_crash.txt`, shown in Settings > Problem
   reports.

@@ -1,17 +1,20 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/models.dart';
+import '../core/quality.dart';
 import '../core/scope.dart';
 import '../core/settings.dart';
 import '../core/theme.dart';
 import '../widgets/art.dart';
 import '../widgets/controls.dart';
 import '../widgets/menus.dart';
+import 'lyrics_screen.dart';
 import 'queue_sheet.dart';
 import 'visualizer_screen.dart';
 
@@ -133,7 +136,7 @@ class _Backdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
     final cs = Theme.of(context).colorScheme;
-    final black = scope.settings.theme == ThemeChoice.black;
+    final black = scope.settings.blackNow && Theme.of(context).brightness == Brightness.dark;
     final base = black ? Colors.black : cs.surface;
     return Stack(
       fit: StackFit.expand,
@@ -146,12 +149,14 @@ class _Backdrop extends StatelessWidget {
               duration: motion(scope.settings, 600),
               child: snap.data == null
                   ? _Glow(key: ValueKey('g${song.albumId}'), color: albumHue(song.albumId))
-                  : ImageFiltered(
+                  : _Drift(
                       key: ValueKey(snap.data),
-                      imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                      child: Opacity(
-                        opacity: black ? 0.35 : 0.55,
-                        child: Image.file(File(snap.data!), fit: BoxFit.cover, cacheWidth: 160),
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                        child: Opacity(
+                          opacity: black ? 0.35 : 0.55,
+                          child: Image.file(File(snap.data!), fit: BoxFit.cover, cacheWidth: 160),
+                        ),
                       ),
                     ),
             ),
@@ -213,6 +218,30 @@ class _TopBar extends StatelessWidget {
               MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height)
             const _Clock(),
           const Spacer(),
+          if (song.podcast)
+            ListenableBuilder(
+              listenable: scope.settings,
+              builder: (context, _) {
+                const speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+                final v = scope.settings.podcastSpeed;
+                return TextButton(
+                  style: TextButton.styleFrom(minimumSize: Size(b * 1.2, b)),
+                  onPressed: () =>
+                      scope.settings.podcastSpeed = speeds[(speeds.indexOf(v) + 1) % speeds.length],
+                  child: Text(
+                    '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v}×',
+                    style: TextStyle(fontSize: b * 0.36, fontWeight: FontWeight.w700),
+                  ),
+                );
+              },
+            ),
+          if (scope.settings.lyrics && !song.podcast)
+            BigIconButton(
+              icon: Icons.lyrics_rounded,
+              size: b,
+              tooltip: 'Lyrics',
+              onTap: () => openLyrics(context),
+            ),
           BigIconButton(
             icon: Icons.graphic_eq_rounded,
             size: b,
@@ -389,6 +418,8 @@ class _Titles extends StatelessWidget {
           textAlign: align,
           style: TextStyle(fontSize: size * 0.5, color: cs.onSurfaceVariant),
         ),
+        SizedBox(height: size * 0.3),
+        QualityBadge(song: song, size: (size * 0.42).clamp(12.0, 18.0)),
       ],
     );
   }
@@ -482,26 +513,28 @@ class _CoverLayout extends StatelessWidget {
         final b = s.buttonSize;
         Widget cover(double size) => GestureDetector(
           onTap: AppScope.of(context).player.toggle,
-          child: Hero(
-            tag: 'now-art',
-            flightShuttleBuilder: nowArtShuttle,
-            child: _TrackSwitcher(
-              songId: song.id,
-              direction: direction,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: artRadius(s.artShape, size),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: Theme.of(context).brightness == Brightness.dark ? 0.4 : 0.15,
+          child: _Breathe(
+            child: Hero(
+              tag: 'now-art',
+              flightShuttleBuilder: nowArtShuttle,
+              child: _TrackSwitcher(
+                songId: song.id,
+                direction: direction,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: artRadius(s.artShape, size),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: Theme.of(context).brightness == Brightness.dark ? 0.4 : 0.15,
+                        ),
+                        blurRadius: 40,
+                        offset: const Offset(0, 12),
                       ),
-                      blurRadius: 40,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Art(albumId: song.albumId, size: size),
                 ),
-                child: Art(albumId: song.albumId, size: size),
               ),
             ),
           ),
@@ -528,9 +561,9 @@ class _CoverLayout extends StatelessWidget {
                           child: _Titles(song: song, size: 34),
                         ),
                       ),
-                      const SeekBar(),
-                      _Transport(size: b),
-                      const _UpNext(),
+                      const _Entrance(order: 1, child: SeekBar()),
+                      _Entrance(order: 2, child: _Transport(size: b)),
+                      const _Entrance(order: 3, child: _UpNext()),
                     ],
                   ),
                 ),
@@ -550,9 +583,9 @@ class _CoverLayout extends StatelessWidget {
                 direction: direction,
                 child: _Titles(song: song, size: 28, align: TextAlign.center),
               ),
-              const SeekBar(),
-              _Transport(size: b * 0.9),
-              const _UpNext(),
+              const _Entrance(order: 1, child: SeekBar()),
+              _Entrance(order: 2, child: _Transport(size: b * 0.9)),
+              const _Entrance(order: 3, child: _UpNext()),
             ],
           ),
         );
@@ -709,8 +742,8 @@ class _RecordLayout extends StatelessWidget {
                           child: _Titles(song: song, size: 34),
                         ),
                       ),
-                      const SeekBar(),
-                      _Transport(size: b),
+                      const _Entrance(order: 1, child: SeekBar()),
+                      _Entrance(order: 2, child: _Transport(size: b)),
                     ],
                   ),
                 ),
@@ -730,8 +763,8 @@ class _RecordLayout extends StatelessWidget {
                 direction: direction,
                 child: _Titles(song: song, size: 28, align: TextAlign.center),
               ),
-              const SeekBar(),
-              _Transport(size: b * 0.9),
+              const _Entrance(order: 1, child: SeekBar()),
+              _Entrance(order: 2, child: _Transport(size: b * 0.9)),
             ],
           ),
         );
@@ -864,4 +897,146 @@ class _VinylPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_VinylPainter old) => old.accent != accent;
+}
+
+/// The audio quality under the titles: "FLAC 24-bit · 96 kHz" (hi-res in the
+/// accent colour, with a sparkle), "MP3 320 kbps".
+class QualityBadge extends StatelessWidget {
+  final Song song;
+  final double size;
+  const QualityBadge({super.key, required this.song, this.size = 14});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FutureBuilder<Quality?>(
+      future: Quality.of(song),
+      builder: (context, snap) {
+        final q = snap.data;
+        return AnimatedSwitcher(
+          duration: motion(AppScope.of(context).settings, 300),
+          child: q == null
+              ? SizedBox(key: const ValueKey(0), height: size * 1.9)
+              : Container(
+                  key: ValueKey(q.label),
+                  padding: EdgeInsets.symmetric(horizontal: size * 0.7, vertical: size * 0.25),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(size),
+                    border: Border.all(color: (q.hiRes ? cs.primary : cs.onSurface).withValues(alpha: 0.5)),
+                    color: q.hiRes ? cs.primary.withValues(alpha: 0.14) : Colors.transparent,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (q.hiRes) ...[
+                        Icon(Icons.auto_awesome_rounded, size: size, color: cs.primary),
+                        SizedBox(width: size * 0.35),
+                      ] else if (q.lossless) ...[
+                        Icon(Icons.graphic_eq_rounded, size: size, color: cs.onSurfaceVariant),
+                        SizedBox(width: size * 0.35),
+                      ],
+                      Text(
+                        q.hiRes ? 'Hi-Res ${q.label}' : q.label,
+                        style: TextStyle(
+                          fontSize: size,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                          color: q.hiRes ? cs.primary : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// Fades and slides a part of the player in, one after another, as it opens.
+class _Entrance extends StatelessWidget {
+  final int order;
+  final Widget child;
+  const _Entrance({required this.order, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context).settings;
+    if (!s.animations) return child;
+    final delay = 0.12 * order;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 420 + (order * 90)),
+      curve: Interval(delay / (1 + delay), 1, curve: Curves.easeOutCubic),
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * 24), child: child),
+      ),
+    );
+  }
+}
+
+/// The cover sits back a little while paused and springs forward on play.
+class _Breathe extends StatelessWidget {
+  final Widget child;
+  const _Breathe({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: scope.player,
+      builder: (context, child) => AnimatedScale(
+        scale: scope.player.playing ? 1.0 : 0.9,
+        duration: motion(scope.settings, 550),
+        curve: scope.player.playing ? Curves.easeOutBack : Curves.easeOutCubic,
+        child: child,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The blurred cover behind the player drifts slowly (while playing).
+class _Drift extends StatefulWidget {
+  final Widget child;
+  const _Drift({super.key, required this.child});
+
+  @override
+  State<_Drift> createState() => _DriftState();
+}
+
+class _DriftState extends State<_Drift> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(seconds: 24));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: scope.player,
+      builder: (context, _) {
+        final run = scope.player.playing && scope.settings.animations;
+        if (run && !_c.isAnimating) _c.repeat();
+        if (!run && _c.isAnimating) _c.stop();
+        return AnimatedBuilder(
+          animation: _c,
+          child: widget.child,
+          builder: (context, child) {
+            final a = _c.value * 2 * pi;
+            return Transform.scale(
+              scale: 1.25 + 0.05 * sin(a),
+              child: Transform.translate(offset: Offset(cos(a) * 30, sin(a * 2) * 18), child: child),
+            );
+          },
+        );
+      },
+    );
+  }
 }

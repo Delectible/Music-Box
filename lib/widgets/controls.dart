@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../core/format.dart';
 import '../core/player.dart';
@@ -188,6 +191,8 @@ class RepeatButton extends StatelessWidget {
 }
 
 /// Seek bar with times. Holds its own value while dragging.
+/// The seek bar: the part already played is a wave that ripples while the
+/// song plays and settles flat when it's paused (or while you drag).
 class SeekBar extends StatefulWidget {
   final Color? color;
   final double thickness;
@@ -198,12 +203,48 @@ class SeekBar extends StatefulWidget {
   State<SeekBar> createState() => _SeekBarState();
 }
 
-class _SeekBarState extends State<SeekBar> {
+class _SeekBarState extends State<SeekBar> with TickerProviderStateMixin {
   double? _drag;
+  late final Ticker _ticker;
+  final _phase = ValueNotifier(0.0);
+  late final _amp = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
+  Duration _last = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((t) {
+      final dt = (t - _last).inMicroseconds / 1e6;
+      _last = t;
+      _phase.value = (_phase.value + dt * 2.2) % 1;
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _amp.dispose();
+    _phase.dispose();
+    super.dispose();
+  }
+
+  void _sync(bool playing, bool animate) {
+    final wave = playing && _drag == null;
+    if (wave && _amp.status != AnimationStatus.forward && _amp.value < 1) _amp.forward();
+    if (!wave && _amp.status != AnimationStatus.reverse && _amp.value > 0) _amp.reverse();
+    final run = wave && animate;
+    if (run && !_ticker.isActive) {
+      _last = Duration.zero;
+      _ticker.start();
+    } else if (!run && _ticker.isActive && _amp.value == 0) {
+      _ticker.stop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final p = AppScope.of(context).player;
+    final scope = AppScope.of(context);
+    final p = scope.player;
     final cs = Theme.of(context).colorScheme;
     final c = widget.color ?? cs.onSurface;
     return ListenableBuilder(
@@ -212,6 +253,9 @@ class _SeekBarState extends State<SeekBar> {
         final total = p.duration.inMilliseconds.toDouble();
         final pos =
             _drag ?? p.position.value.inMilliseconds.toDouble().clamp(0, total > 0 ? total : 1).toDouble();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _sync(p.playing, scope.settings.animations);
+        });
         final style = TextStyle(
           fontSize: widget.fontSize,
           color: c.withValues(alpha: 0.75),
@@ -220,29 +264,47 @@ class _SeekBarState extends State<SeekBar> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: widget.thickness,
-                activeTrackColor: cs.primary,
-                inactiveTrackColor: c.withValues(alpha: 0.16),
-                thumbShape: RoundSliderThumbShape(enabledThumbRadius: widget.thickness + 2),
-                padding: EdgeInsets.zero,
-              ),
-              child: SizedBox(
-                height: 36,
-                child: Slider(
-                  value: pos,
-                  max: total > 0 ? total : 1,
-                  onChanged: total > 0 ? (v) => setState(() => _drag = v) : null,
-                  onChangeEnd: (v) {
-                    p.seek(Duration(milliseconds: v.round()));
-                    setState(() => _drag = null);
-                  },
-                ),
-              ),
+            LayoutBuilder(
+              builder: (context, box) {
+                double at(double dx) => total <= 0 ? 0 : (dx / box.maxWidth).clamp(0.0, 1.0) * total;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: total > 0
+                      ? (d) => p.seek(Duration(milliseconds: at(d.localPosition.dx).round()))
+                      : null,
+                  onHorizontalDragStart: total > 0
+                      ? (d) => setState(() => _drag = at(d.localPosition.dx))
+                      : null,
+                  onHorizontalDragUpdate: total > 0
+                      ? (d) => setState(() => _drag = at(d.localPosition.dx))
+                      : null,
+                  onHorizontalDragEnd: total > 0
+                      ? (_) {
+                          final v = _drag;
+                          setState(() => _drag = null);
+                          if (v != null) p.seek(Duration(milliseconds: v.round()));
+                        }
+                      : null,
+                  child: SizedBox(
+                    height: 40,
+                    width: double.infinity,
+                    child: CustomPaint(
+                      painter: _WavePainter(
+                        progress: total > 0 ? pos / total : 0,
+                        phase: _phase,
+                        amp: _amp,
+                        played: cs.primary,
+                        rest: c.withValues(alpha: 0.16),
+                        thickness: widget.thickness,
+                        dragging: _drag != null,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: 2),
               child: Row(
                 children: [
                   Text(clock(Duration(milliseconds: pos.round())), style: style),
@@ -256,6 +318,76 @@ class _SeekBarState extends State<SeekBar> {
       },
     );
   }
+}
+
+class _WavePainter extends CustomPainter {
+  final double progress;
+  final ValueNotifier<double> phase;
+  final Animation<double> amp;
+  final Color played, rest;
+  final double thickness;
+  final bool dragging;
+
+  _WavePainter({
+    required this.progress,
+    required this.phase,
+    required this.amp,
+    required this.played,
+    required this.rest,
+    required this.thickness,
+    required this.dragging,
+  }) : super(repaint: Listenable.merge([phase, amp]));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final mid = size.height / 2;
+    final r = thickness * 0.9; // thumb radius
+    final x = (r + (size.width - 2 * r) * progress.clamp(0.0, 1.0));
+    final stroke = thickness * 0.6;
+    // The rest of the song: a calm straight line.
+    canvas.drawLine(
+      Offset(x + r + 4, mid),
+      Offset(size.width - stroke / 2, mid),
+      Paint()
+        ..color = rest
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round,
+    );
+    // Played: a wave that ripples toward the thumb.
+    final a = Curves.easeInOut.transform(amp.value) * thickness * 0.55;
+    const wavelength = 30.0;
+    final path = Path()..moveTo(stroke / 2, mid);
+    final end = max(stroke / 2, x - r - 3);
+    for (var px = stroke / 2; px <= end; px += 2) {
+      // Fades in from the ends so it meets the thumb and the start cleanly.
+      final edge = min(1.0, min(px, end - px) / 12);
+      final y = mid + sin((px / wavelength - phase.value) * 2 * pi) * a * edge;
+      path.lineTo(px, y);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = played
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    // The thumb: a tall rounded bar, bigger while dragging.
+    final h = dragging ? thickness * 3.4 : thickness * 2.6;
+    final w = dragging ? thickness * 1.1 : thickness * 0.8;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset(x, mid), width: w, height: h),
+        Radius.circular(w / 2),
+      ),
+      Paint()..color = played,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_WavePainter old) =>
+      old.progress != progress || old.played != played || old.rest != rest || old.dragging != dragging;
 }
 
 /// Sideways swipe to skip that ignores the phone's own gestures: swipes that

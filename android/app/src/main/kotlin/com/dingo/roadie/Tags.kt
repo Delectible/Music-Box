@@ -45,8 +45,15 @@ object Tags {
         } else {
             out["hasCover"] = false
         }
-        out["durationMs"] = f.audioHeader.trackLength * 1000L
-        out["format"] = f.audioHeader.format
+        val h = f.audioHeader
+        out["durationMs"] = h.trackLength * 1000L
+        out["format"] = h.format
+        out["encoding"] = h.encodingType
+        out["bitRate"] = h.bitRate
+        out["sampleRate"] = h.sampleRate
+        out["bitsPerSample"] = h.bitsPerSample
+        out["lossless"] = h.isLossless
+        out["variableBitRate"] = h.isVariableBitRate
         return out
     }
 

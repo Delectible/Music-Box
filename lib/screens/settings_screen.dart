@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/app_info.dart';
 import '../core/scope.dart';
+import '../core/levelling.dart';
 import '../core/settings.dart';
+import 'duplicates_screen.dart';
 import 'fix_tags_sheet.dart';
 import 'folders_screen.dart';
 import 'get_music_screen.dart';
@@ -38,6 +40,35 @@ class SettingsScreen extends StatelessWidget {
                   label: (v) => v.label,
                   onChanged: (v) => s.theme = v,
                 ),
+                if (s.theme == ThemeChoice.dayNight) ...[
+                  _Slider(
+                    icon: Icons.wb_sunny_rounded,
+                    title: 'Day starts at',
+                    value: s.dayStarts.toDouble(),
+                    min: 4,
+                    max: 11,
+                    divisions: 7,
+                    label: '${s.dayStarts}:00',
+                    onChanged: (v) => s.dayStarts = v.round(),
+                  ),
+                  _Slider(
+                    icon: Icons.nightlight_round,
+                    title: 'Night starts at',
+                    value: s.nightStarts.toDouble(),
+                    min: 16,
+                    max: 23,
+                    divisions: 7,
+                    label: '${s.nightStarts}:00',
+                    onChanged: (v) => s.nightStarts = v.round(),
+                  ),
+                  _Switch(
+                    icon: Icons.contrast_rounded,
+                    title: 'All black at night',
+                    subtitle: 'Darkest for night driving',
+                    value: s.nightBlack,
+                    onChanged: (v) => s.nightBlack = v,
+                  ),
+                ],
                 ListTile(
                   leading: const Icon(Icons.palette_rounded),
                   title: const Text('Accent colour'),
@@ -97,6 +128,13 @@ class SettingsScreen extends StatelessWidget {
                   title: 'Animations',
                   value: s.animations,
                   onChanged: (v) => s.animations = v,
+                ),
+                _Switch(
+                  icon: Icons.favorite_rounded,
+                  title: 'Favourites shelf',
+                  subtitle: 'Above Songs, one tap to play',
+                  value: s.favouritesShelf,
+                  onChanged: (v) => s.favouritesShelf = v,
                 ),
                 const _Section('Player'),
                 _Choice<PlayerStyle>(
@@ -158,9 +196,82 @@ class SettingsScreen extends StatelessWidget {
                 _Switch(
                   icon: Icons.play_circle_outline_rounded,
                   title: 'Resume playing when the app opens',
-                  subtitle: 'Handy when the car starts',
+                  subtitle: 'The last song, from where it stopped. Handy when the car starts',
                   value: s.resumeOnStart,
                   onChanged: (v) => s.resumeOnStart = v,
+                ),
+                _Switch(
+                  icon: Icons.open_in_full_rounded,
+                  title: 'Open the full screen player when the app opens',
+                  value: s.openPlayerOnStart,
+                  onChanged: (v) => s.openPlayerOnStart = v,
+                ),
+                _Switch(
+                  icon: Icons.lyrics_rounded,
+                  title: 'Lyrics',
+                  subtitle: 'Synced lyrics from LRCLIB (or a .lrc file next to the song)',
+                  value: s.lyrics,
+                  onChanged: (v) => s.lyrics = v,
+                ),
+                const _Section('Sound'),
+                _Choice<LevelMode>(
+                  icon: Icons.equalizer_rounded,
+                  title: 'Volume levelling',
+                  value: s.levelMode,
+                  values: LevelMode.values,
+                  label: (v) => v.label,
+                  onChanged: (v) => s.levelMode = v,
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
+                  child: Text(
+                    'Every song at the same loudness. Uses ReplayGain tags, or measures the song once.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+                if (s.levelMode != LevelMode.off)
+                  _Slider(
+                    icon: Icons.volume_up_rounded,
+                    title: 'Extra volume',
+                    value: s.preamp,
+                    min: -6,
+                    max: 6,
+                    divisions: 12,
+                    label: '${s.preamp > 0 ? '+' : ''}${s.preamp.round()} dB',
+                    onChanged: (v) => s.preamp = v,
+                  ),
+                _Slider(
+                  icon: Icons.compare_arrows_rounded,
+                  title: 'Crossfade',
+                  value: s.crossfade.toDouble(),
+                  min: 0,
+                  max: 12,
+                  divisions: 12,
+                  label: s.crossfade == 0 ? 'Off' : '${s.crossfade} s',
+                  onChanged: (v) => s.crossfade = v.round(),
+                ),
+                if (s.crossfade > 0)
+                  _Switch(
+                    icon: Icons.album_rounded,
+                    title: 'Play albums straight through',
+                    subtitle: 'No fade between tracks that follow on (live albums, mixes)',
+                    value: s.albumGapless,
+                    onChanged: (v) => s.albumGapless = v,
+                  ),
+                const _Section('Podcasts'),
+                _Choice<double>(
+                  icon: Icons.speed_rounded,
+                  title: 'Speed',
+                  value: s.podcastSpeed,
+                  values: const [0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+                  label: (v) => '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v}×',
+                  onChanged: (v) => s.podcastSpeed = v,
+                ),
+                _Switch(
+                  icon: Icons.fast_forward_rounded,
+                  title: 'Skip silences',
+                  value: s.skipSilence,
+                  onChanged: (v) => s.skipSilence = v,
                 ),
                 const _Section('Library'),
                 ListTile(
@@ -186,6 +297,12 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => Navigator.of(
                     context,
                   ).push(MaterialPageRoute<void>(builder: (_) => const MusicFoldersScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.content_copy_rounded),
+                  title: const Text('Find duplicates'),
+                  subtitle: const Text('The same song more than once: keep the best copy'),
+                  onTap: () => openDuplicates(context),
                 ),
                 ListTile(
                   leading: const Icon(Icons.auto_fix_high_rounded),

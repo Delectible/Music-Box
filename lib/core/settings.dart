@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'levelling.dart';
 import 'sorting.dart';
 
 enum ThemeChoice {
+  dayNight('Day & night (by time)'),
   system('Follow system'),
   light('Light'),
   dark('Dark'),
@@ -212,9 +214,57 @@ class Settings extends ChangeNotifier {
   String get visualizer => _p.getString('visualizer') ?? 'bars';
   set visualizer(String v) => _set('visualizer', v);
 
+  /// Day & night: light from [dayStarts] to [nightStarts] (hours), then
+  /// dark (or black with [nightBlack]).
+  int get dayStarts => _p.getInt('dayStarts') ?? 7;
+  set dayStarts(int v) => _set('dayStarts', v);
+  int get nightStarts => _p.getInt('nightStarts') ?? 19;
+  set nightStarts(int v) => _set('nightStarts', v);
+  bool get nightBlack => _p.getBool('nightBlack') ?? true;
+  set nightBlack(bool v) => _set('nightBlack', v);
+
+  bool isNight([DateTime? at]) {
+    final h = (at ?? DateTime.now()).hour;
+    return dayStarts <= nightStarts
+        ? (h < dayStarts || h >= nightStarts)
+        : (h >= nightStarts && h < dayStarts);
+  }
+
   ThemeMode get themeMode => switch (theme) {
     ThemeChoice.system => ThemeMode.system,
     ThemeChoice.light => ThemeMode.light,
+    ThemeChoice.dayNight => isNight() ? ThemeMode.dark : ThemeMode.light,
     _ => ThemeMode.dark,
   };
+
+  /// All-black dark theme now (Black, or Day & night at night with black on).
+  bool get blackNow => theme == ThemeChoice.black || (theme == ThemeChoice.dayNight && nightBlack);
+
+  // Sound.
+  LevelMode get levelMode => _enum('levelMode', LevelMode.values, LevelMode.track);
+  set levelMode(LevelMode v) => _set('levelMode', v);
+
+  /// Extra gain on top of levelling (dB): loud cars may want +3.
+  double get preamp => _p.getDouble('preamp') ?? 0;
+  set preamp(double v) => _set('preamp', v);
+
+  /// Crossfade seconds (0 = off) and whether album tracks run straight on.
+  int get crossfade => _p.getInt('crossfade') ?? 0;
+  set crossfade(int v) => _set('crossfade', v);
+  bool get albumGapless => _p.getBool('albumGapless') ?? true;
+  set albumGapless(bool v) => _set('albumGapless', v);
+
+  // Podcasts.
+  double get podcastSpeed => _p.getDouble('podcastSpeed') ?? 1.0;
+  set podcastSpeed(double v) => _set('podcastSpeed', v);
+  bool get skipSilence => _p.getBool('skipSilence') ?? false;
+  set skipSilence(bool v) => _set('skipSilence', v);
+
+  // Start up and extras.
+  bool get openPlayerOnStart => _p.getBool('openPlayerOnStart') ?? false;
+  set openPlayerOnStart(bool v) => _set('openPlayerOnStart', v);
+  bool get lyrics => _p.getBool('lyrics') ?? true;
+  set lyrics(bool v) => _set('lyrics', v);
+  bool get favouritesShelf => _p.getBool('favouritesShelf') ?? true;
+  set favouritesShelf(bool v) => _set('favouritesShelf', v);
 }

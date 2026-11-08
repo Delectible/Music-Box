@@ -8,10 +8,16 @@ import 'package:roadie/core/downloads.dart';
 import 'package:roadie/core/http.dart';
 import 'package:roadie/core/library.dart';
 import 'package:roadie/core/metadata.dart';
+import 'package:roadie/core/models.dart';
 import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/sources.dart';
 import 'package:roadie/core/sorting.dart';
+import 'package:roadie/core/lyrics.dart';
+import 'package:roadie/core/player.dart';
+import 'package:roadie/core/playlists.dart';
+import 'package:roadie/core/quality.dart';
+import 'package:roadie/core/smart.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/screens/podcast_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -240,5 +246,106 @@ void main() {
     expect(sortEpisodes(show.songs, 'newest').first.title, 'Last Exit');
     expect(sortEpisodes(show.songs, 'oldest').first.title, 'Maps and Shortcuts');
     expect(sortEpisodes(show.songs, 'title').first.title, 'Fuel Stops');
+  });
+
+  test('lyrics: LRC lines in time order, the line playing now', () {
+    final l = Lyrics(
+      lines: Lyrics.parseLrc('[ar:x]\n[00:12.50]Second\n[00:05.00][01:00.00]First and again\n[00:20]Third'),
+      source: 't',
+    );
+    expect(l.lines.map((x) => x.text).toList(), ['First and again', 'Second', 'Third', 'First and again']);
+    expect(l.lineAt(const Duration(seconds: 2)), -1);
+    expect(l.lineAt(const Duration(seconds: 13)), 1);
+    expect(l.lineAt(const Duration(minutes: 2)), 3);
+  });
+
+  test('quality badge text', () {
+    final hi = Quality.from({
+      'format': 'FLAC 24 bits',
+      'sampleRate': '96000',
+      'bitsPerSample': 24,
+      'lossless': true,
+    }, 'a.flac')!;
+    expect(hi.label, 'FLAC 24-bit · 96 kHz');
+    expect(hi.hiRes, isTrue);
+    final cd = Quality.from({
+      'format': 'FLAC 16 bits',
+      'sampleRate': '44100',
+      'bitsPerSample': 16,
+      'lossless': true,
+    }, 'a.flac')!;
+    expect(cd.label, 'FLAC 16-bit · 44.1 kHz');
+    expect(cd.hiRes, isFalse);
+    final mp3 = Quality.from({'format': 'MPEG-1 Layer 3', 'bitRate': '320', 'sampleRate': '44100'}, 'a.mp3')!;
+    expect(mp3.label, 'MP3 320 kbps');
+  });
+
+  test('day and night', () async {
+    SharedPreferences.setMockInitialValues({});
+    final s = Settings(await SharedPreferences.getInstance());
+    expect(s.isNight(DateTime(2026, 1, 1, 12)), isFalse);
+    expect(s.isNight(DateTime(2026, 1, 1, 21)), isTrue);
+    expect(s.isNight(DateTime(2026, 1, 1, 5)), isTrue);
+  });
+
+  test('smart playlists and duplicates', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final lib = Library(DemoSource(), Settings(prefs));
+    await lib.load();
+    final engine = SilentEngine();
+    final p = Player(engine, prefs);
+    final lists = Playlists(prefs);
+    final smart = smartPlaylists(lib, p, lists, now: DateTime(2025, 11, 1));
+    final trip = smart.firstWhere((c) => c.key == 'smart:trip');
+    expect(trip.duration, greaterThanOrEqualTo(const Duration(hours: 2)));
+    expect(smart.any((c) => c.key == 'smart:never'), isTrue);
+    expect(smart.any((c) => c.key == 'smart:most'), isFalse); // nothing played yet
+    final a = lib.songs.first;
+    final copy = Song(
+      id: 999,
+      uri: '/x/copy.flac',
+      path: '/x/copy.flac',
+      title: '${a.title} (2019 Remaster)',
+      artist: a.artist.toUpperCase(),
+      album: 'Best Of',
+      albumArtist: a.artist,
+      albumId: 50,
+      genre: a.genre,
+      year: 2019,
+      track: 1,
+      disc: 1,
+      duration: a.duration + const Duration(seconds: 2),
+      added: a.added,
+      modified: a.modified,
+      size: a.size * 4,
+    );
+    final d = findDuplicates([...lib.songs, copy], (x, y) => y.size.compareTo(x.size));
+    expect(d.length, 1);
+    expect(d.single.first.id, 999); // the bigger copy first
+    engine.close();
+  });
+
+  test('podcasts: carry on where you left off, played at 90%', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final lib = Library(DemoSource(), Settings(prefs));
+    await lib.load();
+    final engine = SilentEngine();
+    final p = Player(engine, prefs);
+    final eps = lib.podcasts.single.songs;
+    await p.playAll(eps, start: 0);
+    engine.advance(const Duration(minutes: 7));
+    await Future<void>.delayed(Duration.zero);
+    expect(p.resumeAt(eps.first.id), const Duration(minutes: 7));
+    expect(p.isPlayed(eps.first.id), isFalse);
+    engine.advance(eps.first.duration * 0.95);
+    await Future<void>.delayed(Duration.zero);
+    expect(p.isPlayed(eps.first.id), isTrue);
+    expect(p.resumeAt(eps.first.id), isNull);
+    // Remembered across restarts.
+    final again = Player(SilentEngine(), prefs);
+    expect(again.isPlayed(eps.first.id), isTrue);
+    engine.close();
   });
 }

@@ -95,7 +95,7 @@ class DownloadService : Service() {
         )
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL)
         else @Suppress("DEPRECATION") Notification.Builder(context)
-        return b.setSmallIcon(android.R.drawable.stat_sys_download)
+        return b.setSmallIcon(R.drawable.ic_stat_roadie)
             .setContentTitle("Downloading $active ${if (active == 1) "song" else "songs"}")
             .setContentText(if (done > 0) "$done done so far" else "Getting music")
             .setOngoing(true)

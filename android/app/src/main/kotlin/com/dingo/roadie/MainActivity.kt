@@ -165,6 +165,15 @@ class MainActivity : AudioServiceActivity() {
                         result.error("downloads", e.message ?: e.toString(), null)
                     }
                 }
+                "loudness" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    val measure = call.argument<Boolean>("measure") ?: true
+                    background(result) {
+                        val out = HashMap<String, Any?>(Loudness.tags(path))
+                        if (measure && !out.containsKey("trackGain")) out["lufs"] = Loudness.measure(path)
+                        out
+                    }
+                }
                 "fileInfo" -> {
                     val path = call.argument<String>("path") ?: ""
                     val id = (call.argument<Number>("id") ?: -1).toLong()

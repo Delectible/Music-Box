@@ -68,11 +68,36 @@
    match; now tries each artist, then looser searches, until something
    matches; also fixed a crash on matches without tags.)
 25. Fade between visualiser styles. (0.2.7: 0.6 s cross-fade.)
+26. A nice media notification. (0.3.0: Roadie status icon, accent colour,
+   cover, prev / play / next and a favourite heart.)
+27. Prettier player. (0.3.0: wavy seek bar that ripples while playing and
+   lies flat when paused; cover eases back when paused; drifting blurred
+   backdrop; controls fade in one after another.)
+28. Remember the last song and position; autoplay; straight into the full
+   player. (0.3.0: the open-player option; the rest was already there.)
+29. Podcast basics. (0.3.0: carry on where you left off, played at 90%,
+   time left, mark played / not played, speed 0.75-2x, skip silences.)
+30. Volume levelling. (0.3.0: ReplayGain tags, else measured once on the
+   device (BS.1770, K-weighted, gated) and remembered; each song or albums
+   as a whole; extra volume.)
+31. Day & night theme. (0.3.0: by time of day, black at night.)
+32. Favourites shelf. (0.3.0: above Songs.)
+33. Quality badge in the player. (0.3.0: "Hi-Res FLAC 24-bit · 96 kHz",
+   "MP3 320 kbps".)
+34. Crossfade. (0.3.0: 0-12 s, equal power, two players; albums that
+   follow on play straight through.)
+35. Duplicate finder. (0.3.0: same title / artist, length within 3 s;
+   best copy kept, the rest deleted after confirming.)
+36. Synced lyrics. (0.3.0: .lrc next to the song or LRCLIB; current line
+   highlighted, tap to jump.)
+37. Smart playlists. (0.3.0: Road trip mix (2 h, daily), Recently added,
+   Most played, Forgotten favourites, Not heard in a while, Never played.)
 
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.
 - Alphabet scroller down the side of long lists.
-- Sleep / arrival timer; "pause when the car's Bluetooth disconnects".
-- Lyrics; equaliser and loudness levelling.
+- Sleep / arrival timer; start / stop with the car's Bluetooth.
+- Volume that rises with speed; voice commands.
+- Equaliser (per output: car, headphones).
 - AcoustID: identify songs with no usable tags by their sound.
