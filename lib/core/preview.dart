@@ -49,8 +49,9 @@ class Preview extends ChangeNotifier {
 
   bool isPlaying(Uri url) => current == url && (playing || loading);
 
-  /// Plays [url], or stops it if it's the one playing.
-  Future<void> toggle(Uri url) async {
+  /// Plays [url], or stops it if it's the one playing. [resolve] finds the
+  /// real stream when [url] is only a page (YouTube).
+  Future<void> toggle(Uri url, {Future<Uri> Function()? resolve}) async {
     if (current == url) return stop();
     current = url;
     failed = null;
@@ -61,7 +62,9 @@ class Preview extends ChangeNotifier {
     if (library.playing) await library.pause();
     try {
       final p = _player;
-      await p.setUrl(url.toString());
+      final stream = resolve == null ? url : await resolve();
+      if (current != url) return;
+      await p.setUrl(stream.toString());
       if (current == url) await p.play();
     } on Object catch (e, st) {
       if (current != url) return;

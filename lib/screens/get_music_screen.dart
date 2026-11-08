@@ -601,7 +601,10 @@ class _ItemScreenState extends State<_ItemScreen> {
       if (!mounted) return;
       setState(() {
         _tracks = t;
-        _picked.addAll(List.generate(t.length, (i) => i));
+        // Albums: everything ticked. Podcasts and huge lists: pick what you want.
+        if (widget.source.id != 'podcasts' && t.length <= 200) {
+          _picked.addAll(List.generate(t.length, (i) => i));
+        }
       });
     } on Object catch (e, st) {
       CrashLog.record(e, st, where: 'tracks ${widget.source.id} ${widget.item.id}');
@@ -799,7 +802,10 @@ class _TrackRow extends StatelessWidget {
               leading: IconButton.filledTonal(
                 iconSize: 30,
                 tooltip: on ? 'Stop preview' : 'Preview',
-                onPressed: () => pv.toggle(url),
+                onPressed: () => pv.toggle(
+                  url,
+                  resolve: track.youtubeId == null ? null : () => YouTube.previewUrl(track.youtubeId!),
+                ),
                 icon: on && pv.loading
                     ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))
                     : Icon(on ? Icons.stop_rounded : Icons.play_arrow_rounded),

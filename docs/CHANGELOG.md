@@ -49,11 +49,16 @@
 19. A YouTube link "downloaded" a broken file. (0.2.4: links are checked
    first: music downloads, web pages open in the browser, anything else is
    refused; every download's first bytes must be audio or it's deleted.)
-20. YouTube links and whole playlists. Declined: YouTube doesn't offer
-   files; ripping its streams goes against its terms and the rights of
-   the music on it. YouTube links say so instead of failing.
+20. YouTube links and whole playlists. (0.2.4 declined; 0.2.5 after the
+   owner pointed at the free / Creative Commons / podcast content there:
+   YouTube source (search, videos, playlists up to 500, best AAC audio,
+   tags from title / channel, thumbnail cover) via youtube_explode_dart.
+   What's downloaded is the owner's call.)
 21. Keep a group of downloads together as a playlist. (0.2.4: asked when
    downloading more than one song; made in order once they're done.)
+22. Podcasts by normal means. (0.2.5: Podcasts source: Apple's free
+   podcast search, episodes from the show's own RSS feed; pasted feed
+   links work; episodes aren't pre-ticked; no MusicBrainz lookup.)
 
 ## Ideas
 

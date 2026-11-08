@@ -86,7 +86,7 @@ void main() {
     expect(t.title, 'Some Band - Song');
     expect(await DirectLink(probe: null).search('not a link'), isEmpty);
     // YouTube, web pages and other files are never "downloaded".
-    expect(DirectLink(probe: null).search('https://youtu.be/abc123'), throwsA(isA<UnsupportedLink>()));
+    expect(DirectLink(probe: null).search('https://youtu.be/abc'), throwsA(isA<UnsupportedLink>()));
     expect(
       DirectLink(
         probe: (_) async => const LinkInfo(LinkKind.page, 'text/html', null),
@@ -193,5 +193,28 @@ void main() {
     expect(looksLikeAudio('<!DOCTYPE html><html>'.codeUnits, 'text/html'), isFalse);
     expect(looksLikeAudio('{"error":1}'.codeUnits, 'application/json'), isFalse);
     expect(looksLikeAudio('random bytes here'.codeUnits, 'application/octet-stream'), isFalse);
+  });
+
+  test('podcast feeds: episodes with show, author, number and cover', () {
+    const rss = """<?xml version="1.0"?>
+<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>
+  <title>Road Talk</title><itunes:author>Jo Host</itunes:author>
+  <itunes:image href="https://e.org/show.jpg"/>
+  <item><title>Ep 2: Maps</title><itunes:episode>2</itunes:episode><pubDate>Tue, 03 Mar 2026 10:00:00 GMT</pubDate>
+    <enclosure url="https://e.org/ep2.mp3" type="audio/mpeg" length="1"/><itunes:duration>12:30</itunes:duration></item>
+  <item><title>Trailer video</title><enclosure url="https://e.org/t.mp4" type="video/mp4"/></item>
+  <item><title>Ep 1</title><enclosure url="https://e.org/ep1.m4a?x=1" type="audio/x-m4a"/></item>
+</channel></rss>""";
+    final (show, author, cover, eps) = Podcasts.parseFeed(rss);
+    expect(show, 'Road Talk');
+    expect(author, 'Jo Host');
+    expect(cover, 'https://e.org/show.jpg');
+    expect(eps.length, 2);
+    expect(eps.first.track, 2);
+    expect(eps.first.year, '2026');
+    expect(eps.first.length, const Duration(minutes: 12, seconds: 30));
+    expect(eps.first.album, 'Road Talk');
+    expect(eps.first.lookUp, isFalse);
+    expect(eps.last.ext, 'm4a');
   });
 }

@@ -160,10 +160,13 @@ class Downloads extends ChangeNotifier {
       const waits = [3, 8, 20, 45, 90];
       for (var attempt = 0; ; attempt++) {
         try {
-          await Http.download(
-            t.url,
-            file,
-            cancelled: () => j.cancelled,
+          final yt = t.youtubeId;
+          final fetch = yt != null
+              ? (({required void Function(double) progress}) =>
+                    YouTube.download(yt, file, cancelled: () => j.cancelled, progress: progress))
+              : (({required void Function(double) progress}) =>
+                    Http.download(t.url, file, cancelled: () => j.cancelled, progress: progress));
+          await fetch(
             progress: (p) {
               j.progress = p;
               j.note = null;
@@ -231,7 +234,7 @@ class Downloads extends ChangeNotifier {
     } on Object {
       // Not readable yet: write ours.
     }
-    if (settings.lookUpDownloads && tags.incomplete) {
+    if (settings.lookUpDownloads && t.lookUp && tags.incomplete) {
       try {
         final m = TagFixer.clearWinner(
           await MusicBrainz.search(

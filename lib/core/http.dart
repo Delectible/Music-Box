@@ -39,7 +39,7 @@ bool looksLikeAudio(List<int> head, String type) {
 }
 
 /// What a link points at, from its first bytes.
-enum LinkKind { music, page, other }
+enum LinkKind { music, page, feed, other }
 
 class LinkInfo {
   final LinkKind kind;
@@ -59,6 +59,13 @@ String friendlyError(Object e) {
   if (e is HttpException) return 'The connection dropped';
   if (e is TimeoutException) return 'Timed out';
   if (e is HandshakeException || e is TlsException) return 'Secure connection failed';
+  final s = '$e';
+  if (s.contains('RequestLimitExceeded')) {
+    return 'YouTube is limiting requests right now. Try again in a few minutes';
+  }
+  if (s.contains('VideoUnplayable') || s.contains('VideoUnavailable')) {
+    return 'This video can\'t be played (private, age-restricted or removed)';
+  }
   if (e is NotMusicFile) return 'That link isn\'t a music file (${e.what})';
   if (e is FileSystemException) return 'Couldn\'t save the file (${e.osError?.message ?? e.message})';
   return '$e';
@@ -91,7 +98,7 @@ class Http {
 
   /// Looks at the start of [uri] without downloading it.
   static Future<LinkInfo> probe(Uri uri) async {
-    final res = await _get(uri, headers: {'Range': 'bytes=0-63'});
+    final res = await _get(uri, headers: {'Range': 'bytes=0-511'});
     final type = res.headers.contentType?.mimeType ?? res.headers.value('content-type') ?? '';
     final cd = res.headers.value('content-disposition') ?? '';
     final name = RegExp(
@@ -102,19 +109,25 @@ class Http {
     try {
       await for (final c in res.timeout(const Duration(seconds: 20))) {
         head.addAll(c);
-        if (head.length >= 64) break;
+        if (head.length >= 512) break;
       }
     } on Object {
       // Enough to decide with what came.
     }
     final t = type.toLowerCase();
-    final kind = looksLikeAudio(head, type)
-        ? LinkKind.music
-        : (t.contains('html') ||
-                  String.fromCharCodes(head.take(64)).toLowerCase().contains('<!doctype html') ||
-                  String.fromCharCodes(head.take(64)).toLowerCase().contains('<html')
-              ? LinkKind.page
-              : LinkKind.other);
+    final start = String.fromCharCodes(head.take(512)).toLowerCase();
+    final LinkKind kind;
+    if (looksLikeAudio(head.take(64).toList(), type)) {
+      kind = LinkKind.music;
+    } else if (t.contains('rss') ||
+        start.contains('<rss') ||
+        (t.contains('xml') && start.contains('<channel'))) {
+      kind = LinkKind.feed; // a podcast
+    } else if (t.contains('html') || start.contains('<!doctype html') || start.contains('<html')) {
+      kind = LinkKind.page;
+    } else {
+      kind = LinkKind.other;
+    }
     return LinkInfo(kind, type, name == null ? null : Uri.decodeComponent(name));
   }
 

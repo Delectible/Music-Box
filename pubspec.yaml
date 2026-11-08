@@ -3,7 +3,7 @@ description: >-
   A simple, customisable music player built for car screens: big controls,
   a full screen drive player, lots of ways to sort and view your library.
 publish_to: none
-version: 0.2.4+6
+version: 0.2.5+7
 
 environment:
   sdk: ^3.12.0
@@ -21,6 +21,8 @@ dependencies:
   # Keep the screen on in the drive player (Settings).
   wakelock_plus: ^1.8.2
   webview_flutter: ^4.14.1
+  youtube_explode_dart: ^3.1.0
+  xml: ^6.6.1
 
 dev_dependencies:
   flutter_test:

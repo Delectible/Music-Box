@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
+import 'package:xml/xml.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 
 import 'http.dart';
 
@@ -34,6 +38,12 @@ class RemoteTrack {
   /// A lighter stream to preview before downloading (else [url]).
   final Uri? preview;
 
+  /// A YouTube video: the audio comes from YouTube's streams, not [url].
+  final String? youtubeId;
+
+  /// Look the song up on MusicBrainz for missing tags (not for podcasts).
+  final bool lookUp;
+
   const RemoteTrack({
     required this.title,
     required this.url,
@@ -48,6 +58,8 @@ class RemoteTrack {
     this.cover,
     this.quality = '',
     this.preview,
+    this.youtubeId,
+    this.lookUp = true,
   });
 
   Uri get previewUrl => preview ?? url;
@@ -68,6 +80,8 @@ List<MusicSource> allSources({required String jamendoKey, required bool lossless
   InternetArchive(lossless: lossless),
   Jamendo(jamendoKey, lossless: lossless),
   CcMixter(lossless: lossless),
+  YouTube(),
+  Podcasts(),
   DirectLink(),
 ];
 
@@ -381,7 +395,11 @@ class CcMixter extends MusicSource {
   }
 
   @override
-  Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => switch (item.source) {
+    'youtube' => YouTube().tracks(item),
+    'podcasts' => Podcasts().tracks(item),
+    _ => [item.data! as RemoteTrack],
+  };
 }
 
 /// The link is a web page: look for music files on it in the browser.
@@ -428,11 +446,8 @@ class DirectLink extends MusicSource {
     if (!text.contains('://') && RegExp(r'^[\w-]+(\.[\w-]+)+(/|$)').hasMatch(text)) text = 'https://$text';
     final uri = Uri.tryParse(text);
     if (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http') || uri.host.isEmpty) return const [];
-    if (isYouTube(uri)) {
-      throw UnsupportedLink(
-        'YouTube links can\'t be downloaded: YouTube only streams in its own players and doesn\'t offer files.',
-      );
-    }
+    // YouTube videos and playlists, and podcast feeds, have their own sources.
+    if (isYouTube(uri)) return YouTube().fromUrl(uri);
     String? served;
     final check = probe;
     if (check != null) {
@@ -440,6 +455,8 @@ class DirectLink extends MusicSource {
       switch (info.kind) {
         case LinkKind.page:
           throw LinkIsPage(uri);
+        case LinkKind.feed:
+          return [await Podcasts().fromFeed(uri)];
         case LinkKind.other:
           throw UnsupportedLink(
             'That link isn\'t a music file (${info.type.isEmpty ? 'unknown type' : info.type}).',
@@ -531,4 +548,281 @@ class PageSource extends MusicSource {
   Future<List<RemoteItem>> search(String query) async => const [];
   @override
   Future<List<RemoteTrack>> tracks(RemoteItem item) async => (item.data! as List).cast<RemoteTrack>();
+}
+
+/// YouTube: search, single videos and whole playlists. Downloads the
+/// best AAC (M4A) audio stream; tags from the title ("Artist - Title") and
+/// channel, cover from the thumbnail, then MusicBrainz.
+class YouTube extends MusicSource {
+  static final client = yt.YoutubeExplode();
+
+  @override
+  String get id => 'youtube';
+  @override
+  String get name => 'YouTube';
+  @override
+  String get blurb => 'Videos and playlists: Creative Commons, free releases, talks, podcasts';
+
+  static RemoteTrack trackOf(yt.Video v, {String album = '', int number = 0}) {
+    var artist = v.author.replaceAll(RegExp(r'\s*-\s*Topic$'), '').replaceAll(RegExp(r'VEVO$'), '').trim();
+    var title = v.title;
+    final dash = RegExp(r'^(.+?)\s+[-–—]\s+(.+)$').firstMatch(title);
+    if (dash != null) {
+      artist = dash.group(1)!.trim();
+      title = dash.group(2)!.trim();
+    }
+    title = title
+        .replaceAll(
+          RegExp(
+            r'\s*[\(\[](official|lyric|lyrics|audio|video|hq|hd|4k|visualizer|music video)[^\)\]]*[\)\]]',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+    return RemoteTrack(
+      title: title.isEmpty ? v.title : title,
+      artist: artist,
+      albumArtist: album.isEmpty ? artist : '',
+      album: album,
+      year: '${v.uploadDate?.year ?? v.publishDate?.year ?? ''}',
+      track: number,
+      url: Uri.parse(v.url),
+      ext: 'm4a',
+      length: v.duration,
+      cover: v.thumbnails.highResUrl,
+      quality: 'AAC',
+      youtubeId: v.id.value,
+    );
+  }
+
+  @override
+  Future<List<RemoteItem>> search(String query) async {
+    final u = Uri.tryParse(query.trim());
+    if (u != null && isYouTube(u)) return fromUrl(u);
+    final list = await client.search.search(query);
+    return [
+      for (final v in list)
+        if (!v.isLive)
+          RemoteItem(
+            source: id,
+            id: v.id.value,
+            title: v.title,
+            artist: v.author,
+            year: '${v.uploadDate?.year ?? ''}',
+            cover: v.thumbnails.mediumResUrl,
+            single: true,
+            data: trackOf(v),
+          ),
+    ];
+  }
+
+  /// A watch / short / youtu.be link (one video) or a playlist link.
+  Future<List<RemoteItem>> fromUrl(Uri u) async {
+    try {
+      return await _fromUrl(u);
+    } on ArgumentError {
+      throw UnsupportedLink('That YouTube link isn\'t a video or playlist.');
+    }
+  }
+
+  Future<List<RemoteItem>> _fromUrl(Uri u) async {
+    final listId = u.queryParameters['list'];
+    if (listId != null && listId.isNotEmpty && !u.queryParameters.containsKey('v')) {
+      final p = await client.playlists.get(listId);
+      return [
+        RemoteItem(
+          source: id,
+          id: 'list:${p.id.value}',
+          title: p.title,
+          artist: p.author,
+          cover: p.thumbnails.highResUrl,
+        ),
+      ];
+    }
+    final v = await client.videos.get(u.toString());
+    return [
+      RemoteItem(
+        source: id,
+        id: v.id.value,
+        title: v.title,
+        artist: v.author,
+        year: '${v.uploadDate?.year ?? ''}',
+        cover: v.thumbnails.mediumResUrl,
+        single: true,
+        data: trackOf(v),
+      ),
+    ];
+  }
+
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async {
+    if (item.single) return [item.data! as RemoteTrack];
+    final listId = item.id.replaceFirst('list:', '');
+    final out = <RemoteTrack>[];
+    var n = 0;
+    await for (final v in client.playlists.getVideos(listId).take(500)) {
+      n++;
+      out.add(trackOf(v, album: item.title, number: n));
+    }
+    return out;
+  }
+
+  /// The audio stream to download or preview: AAC in MP4 when there is one.
+  static Future<yt.AudioOnlyStreamInfo> audio(String videoId) async {
+    final m = await client.videos.streamsClient.getManifest(videoId);
+    final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
+    if (mp4.isNotEmpty) return mp4.withHighestBitrate();
+    throw UnsupportedLink('This video has no downloadable audio');
+  }
+
+  static Future<Uri> previewUrl(String videoId) async => (await audio(videoId)).url;
+
+  /// Saves the video's audio to [file] (via a .part file).
+  static Future<void> download(
+    String videoId,
+    File file, {
+    void Function(double)? progress,
+    bool Function()? cancelled,
+  }) async {
+    final info = await audio(videoId);
+    final total = info.size.totalBytes;
+    final part = File('${file.path}.part');
+    await part.parent.create(recursive: true);
+    final sink = part.openWrite();
+    var got = 0;
+    final head = <int>[];
+    try {
+      await for (final c in client.videos.streamsClient.get(info)) {
+        if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
+        if (head.length < 64) head.addAll(c.take(64 - head.length));
+        sink.add(c);
+        got += c.length;
+        progress?.call(total > 0 ? got / total : -1);
+      }
+      await sink.close();
+      if (!looksLikeAudio(head, 'audio/mp4')) throw NotMusicFile('not audio');
+      if (await file.exists()) await file.delete();
+      await part.rename(file.path);
+    } catch (_) {
+      await sink.close();
+      if (await part.exists()) await part.delete();
+      rethrow;
+    }
+  }
+}
+
+/// Podcasts: search Apple's free podcast directory, then download episodes
+/// straight from the show's own feed (or paste any podcast feed link).
+class Podcasts extends MusicSource {
+  @override
+  String get id => 'podcasts';
+  @override
+  String get name => 'Podcasts';
+  @override
+  String get blurb => 'Any podcast: episodes straight from the show\'s own feed';
+
+  @override
+  Future<List<RemoteItem>> search(String query) async {
+    final d =
+        await Http.json(
+              Uri.https('itunes.apple.com', '/search', {'media': 'podcast', 'term': query, 'limit': '40'}),
+            )
+            as Map;
+    return [
+      for (final r in (d['results'] as List? ?? const []).cast<Map<Object?, Object?>>())
+        if (r['feedUrl'] != null)
+          RemoteItem(
+            source: id,
+            id: '${r['feedUrl']}',
+            title: '${r['collectionName'] ?? r['trackName'] ?? ''}',
+            artist: '${r['artistName'] ?? ''}',
+            cover: (r['artworkUrl600'] ?? r['artworkUrl100']) as String?,
+            data: Uri.parse('${r['feedUrl']}'),
+          ),
+    ];
+  }
+
+  Future<RemoteItem> fromFeed(Uri feed) async {
+    final show = parseFeed(utf8.decode(await Http.bytes(feed), allowMalformed: true));
+    return RemoteItem(
+      source: id,
+      id: feed.toString(),
+      title: show.$1,
+      artist: show.$2,
+      cover: show.$3,
+      data: feed,
+    );
+  }
+
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async {
+    final feed = item.data is Uri ? item.data! as Uri : Uri.parse(item.id);
+    return parseFeed(utf8.decode(await Http.bytes(feed), allowMalformed: true)).$4;
+  }
+
+  static const _types = {
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/x-m4a': 'm4a',
+    'audio/m4a': 'm4a',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+    'audio/ogg': 'ogg',
+    'audio/opus': 'opus',
+    'audio/flac': 'flac',
+    'audio/x-flac': 'flac',
+    'audio/wav': 'wav',
+  };
+
+  /// (show title, author, cover, episodes newest first) from RSS.
+  static (String, String, String?, List<RemoteTrack>) parseFeed(String text) {
+    final doc = XmlDocument.parse(text);
+    final ch = doc.findAllElements('channel').first;
+    String child(XmlElement e, String name) =>
+        e.childElements.where((c) => c.name.qualified == name).firstOrNull?.innerText.trim() ?? '';
+    final show = child(ch, 'title');
+    final author = child(ch, 'itunes:author').isNotEmpty
+        ? child(ch, 'itunes:author')
+        : child(ch, 'managingEditor');
+    final cover =
+        ch.childElements.where((c) => c.name.qualified == 'itunes:image').firstOrNull?.getAttribute('href') ??
+        ch.findElements('image').firstOrNull?.findElements('url').firstOrNull?.innerText.trim();
+    final eps = <RemoteTrack>[];
+    for (final it in ch.findElements('item')) {
+      final enc = it.findElements('enclosure').firstOrNull;
+      final url = enc?.getAttribute('url');
+      if (url == null || url.isEmpty) continue;
+      final type = (enc?.getAttribute('type') ?? '').toLowerCase();
+      if (type.startsWith('video/')) continue;
+      final u = Uri.tryParse(url.trim());
+      if (u == null) continue;
+      final pathExt = u.path.contains('.') ? u.path.substring(u.path.lastIndexOf('.') + 1).toLowerCase() : '';
+      final ext = _types[type] ?? (DirectLink.audioExts.contains(pathExt) ? pathExt : 'mp3');
+      final year = RegExp(r'\b(19|20)\d\d\b').firstMatch(child(it, 'pubDate'))?.group(0) ?? '';
+      final dur = child(it, 'itunes:duration');
+      final epImage = it.childElements
+          .where((c) => c.name.qualified == 'itunes:image')
+          .firstOrNull
+          ?.getAttribute('href');
+      eps.add(
+        RemoteTrack(
+          title: child(it, 'title'),
+          artist: author.isNotEmpty ? author : show,
+          albumArtist: author.isNotEmpty ? author : show,
+          album: show,
+          year: year,
+          genre: 'Podcast',
+          track: int.tryParse(child(it, 'itunes:episode')) ?? 0,
+          url: u,
+          ext: ext,
+          length: _seconds(dur.isEmpty ? null : dur),
+          cover: epImage ?? cover,
+          quality: ext.toUpperCase(),
+          lookUp: false,
+        ),
+      );
+    }
+    return (show, author, cover, eps);
+  }
 }
