@@ -24,6 +24,21 @@ then `flutter pub get`.
   Bluetooth buttons).
 - `lib/core/settings.dart`: every setting, saved as it changes.
 - `lib/core/playlists.dart`: the app's own playlists and Favourites.
+- `lib/core/native.dart`: the rest of MainActivity.kt: storage roots and
+  folders, All files access, microphone permission (visualiser), tags.
+  `Tags.kt` reads / writes tags and covers with jaudiotagger;
+  `Visualizer.kt` streams Android's Visualizer FFT + waveform
+  (channel `roadie/visualizer`).
+- `lib/core/metadata.dart` / `tag_fixer.dart`: MusicBrainz lookups (1 a
+  second), Cover Art Archive, file-name guesses, single and batch Fix tags.
+- `lib/core/sources.dart` / `downloads.dart`: Get music sources (Internet
+  Archive, Jamendo with a user key, ccMixter, direct link) and the queue
+  (2 at a time, Artist/Album/NN Title.ext, then tagged and scanned).
+- `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
+  feed (live, or made up when there's no permission / data) and 10 styles.
+- `lib/core/crash_log.dart`: Dart and native errors to
+  `files/problems.log` and `native_crash.txt`, shown in Settings > Problem
+  reports.
 - `lib/screens/`: home (tabs: side rail on wide screens, bottom bar on
   phones), library views, collection (album / artist / ...), full screen
   player (three layouts: Cover, Glance, Record), queue, search, settings,

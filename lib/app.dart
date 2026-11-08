@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/playlists.dart';
 import 'core/scope.dart';
 import 'core/settings.dart';
+import 'core/tag_fixer.dart';
 import 'core/theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_view.dart';
@@ -32,6 +34,8 @@ class RoadieApp extends StatefulWidget {
 class _RoadieAppState extends State<RoadieApp> {
   late final _accent = Accent(widget.settings, widget.player, widget.library);
   final _nav = GlobalKey<NavigatorState>();
+  late final _downloads = Downloads(widget.settings, widget.library);
+  late final _fixer = TagFixer(widget.library);
 
   @override
   void initState() {
@@ -46,6 +50,8 @@ class _RoadieAppState extends State<RoadieApp> {
   @override
   void dispose() {
     _accent.dispose();
+    _downloads.dispose();
+    _fixer.dispose();
     super.dispose();
   }
 
@@ -57,6 +63,8 @@ class _RoadieAppState extends State<RoadieApp> {
       library: widget.library,
       player: widget.player,
       playlists: widget.playlists,
+      downloads: _downloads,
+      fixer: _fixer,
       child: ListenableBuilder(
         listenable: Listenable.merge([s, _accent]),
         builder: (context, _) {

@@ -10,6 +10,7 @@ import 'get_music_screen.dart';
 import 'library_view.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
+import 'visualizer_screen.dart';
 
 IconData tabIcon(LibraryTab t, {bool selected = false}) => switch (t) {
   LibraryTab.songs => Icons.music_note_rounded,
@@ -234,6 +235,13 @@ class _Header extends StatelessWidget {
               icon: const Icon(Icons.tune_rounded),
               onPressed: () => showViewOptions(context, tab),
             ),
+          IconButton(
+            iconSize: 28,
+            padding: const EdgeInsets.all(12),
+            tooltip: 'Visualiser',
+            icon: const Icon(Icons.graphic_eq_rounded),
+            onPressed: () => openVisualizer(context),
+          ),
           if (showActions) ...[
             IconButton(
               iconSize: 28,

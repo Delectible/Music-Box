@@ -25,14 +25,22 @@ class Library extends ChangeNotifier {
   List<Collection> folders = const [];
   Map<int, Song> byId = const {};
 
-  int _minSeconds = -1;
+  String _filter = '';
+  String get _filterNow =>
+      '${settings.minSeconds}|${settings.includeFolders.join(',')}|${settings.excludeFolders.join(',')}';
   void _onSettings() {
-    if (settings.minSeconds != _minSeconds && state == LibraryState.ready) _rebuild();
+    if (_filterNow != _filter && state == LibraryState.ready) _rebuild();
   }
 
-  Future<void> load({bool ask = false}) async {
-    state = LibraryState.loading;
-    notifyListeners();
+  /// Every song Android knows, before the folder and length filters.
+  List<Song> get unfiltered => _all;
+
+  /// [quiet] keeps showing the current library while it reloads.
+  Future<void> load({bool ask = false, bool quiet = false}) async {
+    if (!quiet || state != LibraryState.ready) {
+      state = LibraryState.loading;
+      notifyListeners();
+    }
     var ok = await source.hasPermission();
     if (!ok && ask) ok = await source.requestPermission();
     if (!ok) {
@@ -45,8 +53,13 @@ class Library extends ChangeNotifier {
   }
 
   void _rebuild() {
-    _minSeconds = settings.minSeconds;
-    songs = _all.where((s) => s.duration.inSeconds >= _minSeconds).toList();
+    _filter = _filterNow;
+    final min = settings.minSeconds;
+    final include = settings.includeFolders;
+    final exclude = settings.excludeFolders;
+    songs = _all
+        .where((s) => s.duration.inSeconds >= min && folderAllowed(s.path, include, exclude))
+        .toList();
     byId = {for (final s in songs) s.id: s};
     albums = _group(CollectionKind.album, (s) => '${s.albumId}', (s) => s.album, (s) => s.albumArtist);
     // Album tracks in disc / track order.
@@ -141,4 +154,11 @@ class Library extends ChangeNotifier {
     settings.removeListener(_onSettings);
     super.dispose();
   }
+}
+
+/// Inside one of [include] (or anywhere when it's empty) and in none of [exclude].
+bool folderAllowed(String path, List<String> include, List<String> exclude) {
+  bool under(String dir) => path.startsWith(dir.endsWith('/') ? dir : '$dir/');
+  if (exclude.any(under)) return false;
+  return include.isEmpty || include.any(under);
 }

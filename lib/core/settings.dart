@@ -119,6 +119,12 @@ class Settings extends ChangeNotifier {
   ViewOptions view(LibraryTab tab) => ViewOptions.decode(_p.getString('view.${tab.name}'), tab);
   void setView(LibraryTab tab, ViewOptions v) => _set('view.${tab.name}', v.encode());
 
+  /// Folders the library comes from (empty: everywhere) and folders it skips.
+  List<String> get includeFolders => _p.getStringList('includeFolders') ?? const [];
+  set includeFolders(List<String> v) => _set('includeFolders', v);
+  List<String> get excludeFolders => _p.getStringList('excludeFolders') ?? const [];
+  set excludeFolders(List<String> v) => _set('excludeFolders', v);
+
   /// Skip files shorter than this (ringtones, voice notes).
   int get minSeconds => _p.getInt('minSeconds') ?? 30;
   set minSeconds(int v) => _set('minSeconds', v);
@@ -155,6 +161,31 @@ class Settings extends ChangeNotifier {
 
   bool get resumeOnStart => _p.getBool('resumeOnStart') ?? false;
   set resumeOnStart(bool v) => _set('resumeOnStart', v);
+
+  // Get music.
+  /// Where downloads are saved; empty means Music/Roadie.
+  String get downloadFolder => _p.getString('downloadFolder') ?? '';
+  set downloadFolder(String v) => _set('downloadFolder', v);
+
+  /// Look up missing tags and covers for downloads on MusicBrainz.
+  bool get lookUpDownloads => _p.getBool('lookUpDownloads') ?? true;
+  set lookUpDownloads(bool v) => _set('lookUpDownloads', v);
+
+  /// Prefer lossless (FLAC) when a source has it.
+  bool get preferLossless => _p.getBool('preferLossless') ?? true;
+  set preferLossless(bool v) => _set('preferLossless', v);
+
+  /// Last source searched in Get music.
+  String get source => _p.getString('source') ?? 'archive';
+  set source(String v) => _set('source', v);
+
+  /// Jamendo's free API key (developer.jamendo.com).
+  String get jamendoKey => _p.getString('jamendoKey') ?? '';
+  set jamendoKey(String v) => _set('jamendoKey', v);
+
+  // Visualiser.
+  String get visualizer => _p.getString('visualizer') ?? 'bars';
+  set visualizer(String v) => _set('visualizer', v);
 
   ThemeMode get themeMode => switch (theme) {
     ThemeChoice.system => ThemeMode.system,

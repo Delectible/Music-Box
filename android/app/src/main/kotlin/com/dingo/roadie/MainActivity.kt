@@ -2,6 +2,9 @@ package com.dingo.roadie
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,9 +16,13 @@ import android.provider.MediaStore
 import android.util.Size
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.util.Date
 import java.util.concurrent.Executors
 
 /**
@@ -27,6 +34,41 @@ class MainActivity : AudioServiceActivity() {
     private val io = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
     private var pending: MethodChannel.Result? = null
+    private var pendingRecord: MethodChannel.Result? = null
+    private var pendingStorage: MethodChannel.Result? = null
+    private val viz = VizStream()
+
+    /** Native crashes go to a file the app shows under Settings > Problem reports. */
+    private fun catchCrashes() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        val file = File(filesDir, "native_crash.txt")
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            try {
+                val sw = StringWriter()
+                e.printStackTrace(PrintWriter(sw))
+                file.appendText("=== ${Date()} (thread ${thread.name}, Android ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})\n$sw\n")
+            } catch (_: Throwable) {
+            }
+            previous?.uncaughtException(thread, e)
+        }
+    }
+
+    private fun canWrite(): Boolean =
+        if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
+        else checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+
+    private fun canRecord() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    /** Internal storage first, then SD cards / USB sticks. */
+    private fun roots(): List<String> {
+        val out = mutableListOf(Environment.getExternalStorageDirectory().path)
+        for (d in getExternalFilesDirs(null)) {
+            val p = d?.path ?: continue
+            val i = p.indexOf("/Android/")
+            if (i > 0) p.substring(0, i).let { if (it !in out) out += it }
+        }
+        return out
+    }
 
     private val permission: String
         get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
@@ -36,6 +78,8 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        catchCrashes()
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/visualizer").setStreamHandler(viz)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/library").setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasPermission" -> result.success(granted())
@@ -57,6 +101,66 @@ class MainActivity : AudioServiceActivity() {
                     MediaScannerConnection.scanFile(this, paths.toTypedArray(), null, null)
                     result.success(null)
                 }
+                "filesDir" -> result.success(filesDir.path)
+                "musicDir" -> result.success(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).path,
+                )
+                "roots" -> result.success(roots())
+                "listDirs" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    background(result) {
+                        File(path).listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }
+                            ?.map { it.name }?.sortedBy { it.lowercase() } ?: emptyList<String>()
+                    }
+                }
+                "canWrite" -> result.success(canWrite())
+                "requestWrite" ->
+                    if (canWrite()) result.success(true)
+                    else if (Build.VERSION.SDK_INT >= 30) {
+                        pendingStorage?.success(false)
+                        pendingStorage = result
+                        try {
+                            startActivity(
+                                Intent(
+                                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                            )
+                        } catch (_: Exception) {
+                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                        }
+                    } else {
+                        pendingStorage?.success(false)
+                        pendingStorage = result
+                        requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 9)
+                    }
+                "canRecord" -> result.success(canRecord())
+                "requestRecord" ->
+                    if (canRecord()) result.success(true)
+                    else {
+                        pendingRecord?.success(false)
+                        pendingRecord = result
+                        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 8)
+                    }
+                "readTags" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    background(result) { Tags.read(path) }
+                }
+                "writeTags" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    val values = call.argument<Map<String, Any?>>("values") ?: emptyMap()
+                    val cover = call.argument<String>("cover")
+                    background(result) {
+                        Tags.write(path, values, cover)
+                        true
+                    }
+                }
+                "nativeCrashes" -> {
+                    val f = File(filesDir, "native_crash.txt")
+                    val text = if (f.exists()) f.readText() else ""
+                    if (call.argument<Boolean>("clear") == true) f.delete()
+                    result.success(text)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -64,10 +168,23 @@ class MainActivity : AudioServiceActivity() {
 
     override fun onRequestPermissionsResult(code: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(code, permissions, results)
-        if (code == 7) {
-            pending?.success(results.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-            pending = null
+        val ok = results.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        when (code) {
+            7 -> { pending?.success(ok); pending = null }
+            8 -> { pendingRecord?.success(ok); pendingRecord = null }
+            9 -> { pendingStorage?.success(ok); pendingStorage = null }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back from the "All files access" settings page.
+        if (Build.VERSION.SDK_INT >= 30) pendingStorage?.let { it.success(canWrite()); pendingStorage = null }
+    }
+
+    override fun onDestroy() {
+        viz.stop()
+        super.onDestroy()
     }
 
     private fun background(result: MethodChannel.Result, work: () -> Any?) {
@@ -75,8 +192,8 @@ class MainActivity : AudioServiceActivity() {
             try {
                 val value = work()
                 main.post { result.success(value) }
-            } catch (e: Exception) {
-                main.post { result.error("library", e.message, null) }
+            } catch (e: Throwable) {
+                main.post { result.error("library", e.message ?: e.toString(), e.stackTraceToString().take(4000)) }
             }
         }
     }

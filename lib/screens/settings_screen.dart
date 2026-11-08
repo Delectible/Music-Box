@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import '../core/app_info.dart';
 import '../core/scope.dart';
 import '../core/settings.dart';
+import 'fix_tags_sheet.dart';
+import 'folders_screen.dart';
+import 'get_music_screen.dart';
 import 'home_screen.dart';
+import 'problems_screen.dart';
 
 void openSettings(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -166,6 +170,30 @@ class SettingsScreen extends StatelessWidget {
                     context,
                   ).push(MaterialPageRoute<void>(builder: (_) => const _TabsScreen())),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.folder_copy_rounded),
+                  title: const Text('Music folders'),
+                  subtitle: Text(
+                    [
+                      if (s.includeFolders.isEmpty)
+                        'Everywhere'
+                      else
+                        'Only ${s.includeFolders.length} folders',
+                      if (s.excludeFolders.isNotEmpty) '${s.excludeFolders.length} skipped',
+                    ].join(' · '),
+                  ),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute<void>(builder: (_) => const MusicFoldersScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.auto_fix_high_rounded),
+                  title: const Text('Fix tags in the library'),
+                  subtitle: const Text(
+                    'Fills in missing titles, albums, years, genres and covers from MusicBrainz',
+                  ),
+                  onTap: () => fixTagsFor(context, scope.library.songs),
+                ),
                 _Slider(
                   icon: Icons.timer_off_rounded,
                   title: 'Hide songs shorter than',
@@ -181,11 +209,21 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Rescan the library'),
                   onTap: () => scope.library.load(ask: true),
                 ),
+                const _Section('Get music'),
+                const DownloadOptions(),
                 const _Section('About'),
                 const ListTile(
                   leading: Icon(Icons.info_outline_rounded),
                   title: Text('${AppInfo.name} ${AppInfo.version}'),
                   subtitle: Text(AppInfo.latest),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.bug_report_rounded),
+                  title: const Text('Problem reports'),
+                  subtitle: const Text('Errors and crashes, to copy and send'),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute<void>(builder: (_) => const ProblemsScreen())),
                 ),
               ],
             ),

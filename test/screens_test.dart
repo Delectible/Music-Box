@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadie/app.dart';
@@ -7,6 +9,9 @@ import 'package:roadie/core/playlists.dart';
 import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
+import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/screens/folders_screen.dart';
+import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -134,6 +139,49 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await _settle(tester);
     await shot(tester, 'car_8_settings');
+    a.engine.close();
+  });
+
+  testWidgets('visualisers', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await a.player.playAll(a.library.albums[0].songs, start: 2);
+    await _settle(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const VisualizerScreen(simulated: true))));
+    await _settle(tester);
+    for (final v in VizStyle.values) {
+      a.settings.visualizer = v.name;
+      // Let the controls hide and the feed get going.
+      await _settle(tester, 4600);
+      await shot(tester, 'car_viz_${v.index + 1}_${v.name}');
+    }
+    // Swipe to the next style.
+    await tester.flingFrom(const Offset(900, 360), const Offset(-500, 0), 2000);
+    await _settle(tester);
+    expect(a.settings.visualizer, VizStyle.bars.name);
+    nav.pop();
+    await _settle(tester);
+    a.engine.close();
+  });
+
+  testWidgets('get music and music folders', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({
+      'excludeFolders': ['/storage/emulated/0/Music/Hollow Pines'],
+    });
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await _tab(tester, 'Get music');
+    expect(find.text('Internet Archive'), findsOneWidget);
+    await shot(tester, 'car_9_get_music');
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const MusicFoldersScreen())));
+    await _settle(tester);
+    expect(find.textContaining('Hollow Pines'), findsOneWidget);
+    await shot(tester, 'car_10_folders');
     a.engine.close();
   });
 }

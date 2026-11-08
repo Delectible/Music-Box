@@ -7,7 +7,20 @@
    nice animations. (0.1.0: library tabs, 13 sort keys, 4 views per tab,
    three full screen player layouts, settings.)
 2. Get music from sites, downloaded automatically from inside the app.
-   Details to come. (0.1.0: Get music tab placeholder.)
+   Details to come. (0.1.0: Get music tab placeholder. 0.2.0: Internet
+   Archive, Jamendo, ccMixter and direct links, a browser, download queue,
+   chosen folder (default Music/Roadie), MusicBrainz tags and covers.
+   tidal.squid.wtf declined: it serves TIDAL's catalogue without the rights.)
+3. Turn bottom-row tabs on and off (already in 0.1.0: Settings > Tabs).
+4. App icon inspired by a vinyl record, something different (4 options
+   sent: A groove road, B horizon, C tacho, D wheel; waiting on a pick).
+5. Visualisers like old Windows Media Player / iTunes, from the home
+   screen and the player, one using the cover. (0.2.0: 10 styles; trim to
+   the ones picked.)
+6. Choose where music comes from: include / exclude folders. (0.2.0)
+7. Rich metadata: look up missing tags on a database, for downloads and
+   existing files. (0.2.0: MusicBrainz + Cover Art Archive, Fix tags.)
+8. Basic error / crash reporting. (0.2.0: Settings > Problem reports.)
 
 ## Ideas
 
@@ -15,4 +28,4 @@
 - Alphabet scroller down the side of long lists.
 - Sleep / arrival timer; "pause when the car's Bluetooth disconnects".
 - Lyrics; equaliser and loudness levelling.
-- Launcher icon (drawn in code like Sisyphus's).
+- AcoustID: identify songs with no usable tags by their sound.

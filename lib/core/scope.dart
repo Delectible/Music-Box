@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
 
+import 'downloads.dart';
 import 'library.dart';
 import 'player.dart';
 import 'playlists.dart';
 import 'settings.dart';
+import 'tag_fixer.dart';
 
 /// Hands the app's state down the tree.
 class AppScope extends InheritedWidget {
@@ -11,6 +13,8 @@ class AppScope extends InheritedWidget {
   final Library library;
   final Player player;
   final Playlists playlists;
+  final Downloads downloads;
+  final TagFixer fixer;
 
   const AppScope({
     super.key,
@@ -18,6 +22,8 @@ class AppScope extends InheritedWidget {
     required this.library,
     required this.player,
     required this.playlists,
+    required this.downloads,
+    required this.fixer,
     required super.child,
   });
 

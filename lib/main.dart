@@ -5,14 +5,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/audio.dart';
+import 'core/crash_log.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/playlists.dart';
 import 'core/settings.dart';
 import 'core/source.dart';
 
-Future<void> main() async {
+void main() => CrashLog.guard(_start);
+
+Future<void> _start() async {
   WidgetsFlutterBinding.ensureInitialized();
+  CrashLog.install();
+  await CrashLog.init();
   final prefs = await SharedPreferences.getInstance();
   final settings = Settings(prefs);
   final source = MediaStoreSource();

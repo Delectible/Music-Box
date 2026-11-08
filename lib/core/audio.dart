@@ -177,6 +177,9 @@ class AudioEngine extends svc.BaseAudioHandler with svc.QueueHandler, svc.SeekHa
 
   set restartOnPrevious(bool v) => _restartOnPrevious = v;
 
+  @override
+  int? get audioSession => _p.androidAudioSessionId;
+
   // Media session (notification, lock screen, steering wheel, Bluetooth).
 
   @override

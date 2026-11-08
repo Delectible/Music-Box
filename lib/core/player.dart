@@ -33,6 +33,9 @@ abstract class Engine {
   /// the player decides what they mean.
   set onToggleShuffle(VoidCallback f) {}
   set onCycleRepeat(VoidCallback f) {}
+
+  /// Android's audio session id of the player (for the visualiser), or null.
+  int? get audioSession => null;
 }
 
 /// The queue and what's playing. The queue is the play order: shuffling

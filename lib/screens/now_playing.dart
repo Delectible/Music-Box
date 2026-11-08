@@ -13,6 +13,7 @@ import '../widgets/art.dart';
 import '../widgets/controls.dart';
 import '../widgets/menus.dart';
 import 'queue_sheet.dart';
+import 'visualizer_screen.dart';
 
 /// Opens the full screen player: slides up from the mini player.
 Route<void> nowPlayingRoute(Settings s) => PageRouteBuilder<void>(
@@ -197,18 +198,26 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
+    // Phones: smaller buttons so they all fit.
+    final b = MediaQuery.sizeOf(context).width < 560 ? 46.0 : 60.0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
           BigIconButton(
             icon: Icons.keyboard_arrow_down_rounded,
-            size: 60,
+            size: b,
             tooltip: 'Close',
             onTap: () => Navigator.of(context).pop(),
           ),
           if (scope.settings.showClock) const _Clock(),
           const Spacer(),
+          BigIconButton(
+            icon: Icons.graphic_eq_rounded,
+            size: b,
+            tooltip: 'Visualiser',
+            onTap: () => openVisualizer(context),
+          ),
           _StylePicker(),
           ListenableBuilder(
             listenable: scope.playlists,
@@ -216,7 +225,7 @@ class _TopBar extends StatelessWidget {
               final fav = scope.playlists.isFavourite(song.id);
               return BigIconButton(
                 icon: fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                size: 60,
+                size: b,
                 active: fav,
                 tooltip: 'Favourite',
                 onTap: () => scope.playlists.toggleFavourite(song.id),
@@ -225,13 +234,13 @@ class _TopBar extends StatelessWidget {
           ),
           BigIconButton(
             icon: Icons.queue_music_rounded,
-            size: 60,
+            size: b,
             tooltip: 'Queue',
             onTap: () => showQueue(context),
           ),
           BigIconButton(
             icon: Icons.more_vert_rounded,
-            size: 60,
+            size: b,
             tooltip: 'More',
             onTap: () => showSongMenu(context, song),
           ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import '../core/scope.dart';
 import '../screens/collection_screen.dart';
+import '../screens/fix_tags_sheet.dart';
 import 'art.dart';
 
 void openCollection(BuildContext context, Collection c) =>
@@ -62,6 +63,7 @@ Future<void> showSongMenu(BuildContext context, Song song) {
           if (a != null) openCollection(context, a);
         },
       ),
+      (Icons.auto_fix_high_rounded, 'Fix tags…', () => showFixTags(context, song)),
     ],
   );
 }
@@ -97,6 +99,7 @@ Future<void> showCollectionMenu(BuildContext context, Collection c) {
       ),
       if (c.kind != CollectionKind.playlist)
         (Icons.playlist_add_rounded, 'Add to playlist…', () => addToPlaylist(context, c.songs)),
+      (Icons.auto_fix_high_rounded, 'Fix tags', () => fixTagsFor(context, c.songs, onlyIncomplete: false)),
       if (playlist != null && playlist.id != 'fav') ...[
         (
           Icons.edit_rounded,

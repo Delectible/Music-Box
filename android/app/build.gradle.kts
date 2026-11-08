@@ -16,8 +16,8 @@ android {
 
     defaultConfig {
         applicationId = "com.dingo.roadie"
-        // Car head units commonly run Android 10 (29); older ones still work.
-        minSdk = flutter.minSdkVersion
+        // Car head units commonly run Android 10 (29). 26+ for the tag library.
+        minSdk = maxOf(flutter.minSdkVersion, 26)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -48,6 +48,7 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (uploadKeystore != null) "upload" else "test")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -56,6 +57,11 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // Reading and writing tags and covers inside music files.
+    implementation("net.jthink:jaudiotagger:3.0.1")
 }
 
 flutter {
