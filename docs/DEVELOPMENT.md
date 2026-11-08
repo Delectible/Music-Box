@@ -34,6 +34,10 @@ then `flutter pub get`.
 - `lib/core/sources.dart` / `downloads.dart`: Get music sources (Internet
   Archive, Jamendo with a user key, ccMixter, direct link) and the queue
   (2 at a time, Artist/Album/NN Title.ext, then tagged and scanned).
+- `lib/screens/browser_screen.dart`: webview_flutter browser for added
+  sites (`CustomSite`); a script lists audio links / <audio> / og:audio on
+  each page, taps on audio files are caught; found files open as a
+  `PageSource` item (same preview / download screen).
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
 - `lib/core/crash_log.dart`: Dart and native errors to

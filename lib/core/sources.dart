@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'http.dart';
 
 /// Something to download from: an album / collection, or a single track.
@@ -97,24 +100,68 @@ class InternetArchive extends MusicSource {
   @override
   String get blurb => 'Live recordings, netlabels, public domain and free releases';
 
+  /// Collections that are talk, not music (radio shows, podcasts, audio books).
+  static const _notMusic =
+      'radioprograms OR radiostationarchives OR radioshowarchive OR podcasts OR podcasts_mirror OR '
+      'audio_podcast OR librivoxaudio OR oldtimeradio OR audio_religion OR audio_news OR audio_tech OR '
+      'audio_bookspoetry OR radio OR tvarchive OR spokenword';
+
+  /// Collections that are mostly real releases and concerts.
+  static const _music = {
+    'etree',
+    'audio_music',
+    '78rpm',
+    'netlabels',
+    'album_recordings',
+    'hifidelity',
+    'georgeblood',
+    'unlockedrecordings',
+    'opensource_audio',
+  };
+
+  /// Best first: how much of [query] is in the title and artist, then
+  /// popularity, with a nudge for real-music collections.
+  static void rank(List<Map<Object?, Object?>> docs, String query) {
+    final terms = RegExp(
+      r'\w+',
+      unicode: true,
+    ).allMatches(query.toLowerCase()).map((m) => m.group(0)!).where((t) => t.length > 1).toList();
+    String all(Object? v) => v is List ? v.join(' ') : (v ?? '').toString();
+    double score(Map<Object?, Object?> x) {
+      final hay = '${all(x['title'])} ${all(x['creator'])}'.toLowerCase();
+      final hit = terms.isEmpty ? 1 : terms.where(hay.contains).length / terms.length;
+      final cols = (x['collection'] is List ? x['collection']! as List : [x['collection']]).map((c) => '$c');
+      final dl = (x['downloads'] as num?)?.toDouble() ?? 0;
+      return hit * 100 + log(1 + dl) * 3 + (cols.any(_music.contains) ? 8 : 0);
+    }
+
+    docs.sort((a, b) => score(b).compareTo(score(a)));
+  }
+
   @override
   Future<List<RemoteItem>> search(String query) async {
+    // Archive matches words anywhere (descriptions, reviews...). Ask for
+    // music only, then rank by how much of the search is in the title and
+    // artist, with popularity as the tie-break.
     final uri = Uri.https('archive.org', '/advancedsearch.php', {
-      'q': '($query) AND mediatype:(audio)',
-      'fl[]': ['identifier', 'title', 'creator', 'year'],
-      'sort[]': 'downloads desc',
-      'rows': '50',
+      'q': '($query) AND mediatype:(audio) AND -collection:($_notMusic)',
+      'fl[]': ['identifier', 'title', 'creator', 'year', 'downloads', 'collection'],
+      'rows': '100',
       'output': 'json',
     });
     final d = await Http.json(uri) as Map;
-    final docs = ((d['response'] as Map?)?['docs'] as List? ?? const []).cast<Map<Object?, Object?>>();
+    final docs = [...((d['response'] as Map?)?['docs'] as List? ?? const []).cast<Map<Object?, Object?>>()];
+    rank(docs, query);
+    String all(Object? v) => v is List ? v.join(' ') : (v ?? '').toString();
     return [
-      for (final x in docs)
+      for (final x in docs.take(50))
         RemoteItem(
           source: id,
           id: '${x['identifier']}',
           title: _str(x['title']),
-          artist: _str(x['creator']),
+          artist: all(x['creator']).isEmpty
+              ? ''
+              : (x['creator'] is List ? (x['creator']! as List).join(', ') : _str(x['creator'])),
           year: _str(x['year']),
           cover: 'https://archive.org/services/img/${x['identifier']}',
         ),
@@ -377,4 +424,64 @@ class DirectLink extends MusicSource {
 
   @override
   Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
+}
+
+/// A website the user added. With a [search] address ("…{q}…") a search
+/// opens its results in the browser; otherwise the browser opens [home].
+class CustomSite {
+  final String id, name, home, search;
+  const CustomSite({required this.id, required this.name, required this.home, this.search = ''});
+
+  Uri searchUri(String q) => Uri.parse(search.replaceAll('{q}', Uri.encodeQueryComponent(q)));
+  Uri get homeUri => Uri.parse(home);
+
+  Map<String, String> toJson() => {'id': id, 'name': name, 'home': home, 'search': search};
+  factory CustomSite.fromJson(Map<String, Object?> m) => CustomSite(
+    id: '${m['id']}',
+    name: '${m['name']}',
+    home: '${m['home']}',
+    search: '${m['search'] ?? ''}',
+  );
+
+  static List<CustomSite> decode(String? s) {
+    if (s == null || s.isEmpty) return const [];
+    try {
+      return [
+        for (final m in jsonDecode(s) as List<Object?>)
+          CustomSite.fromJson((m! as Map).cast<String, Object?>()),
+      ];
+    } on Object {
+      return const [];
+    }
+  }
+
+  static String encode(List<CustomSite> list) => jsonEncode([for (final c in list) c.toJson()]);
+
+  /// "example.com/search?q=chopin" → the address with {q} where "chopin" was.
+  static String templateFrom(String url, String sample) {
+    if (sample.isEmpty) return url;
+    for (final enc in [Uri.encodeQueryComponent(sample), Uri.encodeComponent(sample), sample]) {
+      if (url.contains(enc)) return url.replaceFirst(enc, '{q}');
+    }
+    return url;
+  }
+}
+
+/// Music files found on a web page (browser), as a downloadable "album".
+class PageSource extends MusicSource {
+  final String siteName;
+  PageSource(this.siteName);
+
+  @override
+  String get id => 'page';
+  @override
+  String get name => siteName;
+  @override
+  String get blurb => 'Music files on a web page';
+  @override
+  bool get searchable => false;
+  @override
+  Future<List<RemoteItem>> search(String query) async => const [];
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => (item.data! as List).cast<RemoteTrack>();
 }

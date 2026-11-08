@@ -175,9 +175,13 @@ class Settings extends ChangeNotifier {
   bool get preferLossless => _p.getBool('preferLossless') ?? true;
   set preferLossless(bool v) => _set('preferLossless', v);
 
-  /// Last source searched in Get music.
-  String get source => _p.getString('source') ?? 'archive';
-  set source(String v) => _set('source', v);
+  /// Sources ticked in Get music (built-in ids and custom site ids).
+  List<String> get sources => _p.getStringList('sources') ?? const ['archive'];
+  set sources(List<String> v) => _set('sources', v);
+
+  /// Websites the user added (JSON, see CustomSite).
+  String get customSitesJson => _p.getString('customSites') ?? '';
+  set customSitesJson(String v) => _set('customSites', v);
 
   /// Jamendo's free API key (developer.jamendo.com).
   String get jamendoKey => _p.getString('jamendoKey') ?? '';

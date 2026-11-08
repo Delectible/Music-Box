@@ -177,11 +177,16 @@ void main() {
     setScreen(tester, car);
     final a = await _app({
       'excludeFolders': ['/storage/emulated/0/Music/Hollow Pines'],
+      'customSites': '[{"id":"site-1","name":"Free Tunes","home":"https://free.example","search":""}]',
+      'sources': ['archive', 'ccmixter', 'site-1'],
     });
     await tester.pumpWidget(a.widget);
     await _settle(tester);
     await _tab(tester, 'Get music');
     expect(find.text('Internet Archive'), findsOneWidget);
+    expect(find.text('Free Tunes'), findsOneWidget);
+    expect(find.textContaining('Searching 3 sources'), findsOneWidget);
+    expect(find.text('Browse Free Tunes'), findsOneWidget);
     await shot(tester, 'car_9_get_music');
     final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
     unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const MusicFoldersScreen())));

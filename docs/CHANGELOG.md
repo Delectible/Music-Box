@@ -36,6 +36,16 @@
    the background. (0.2.2: foreground notification while downloading,
    automatic retries that continue the partial file, plain error text.)
 15. The clock in the player doubled the phone's. (0.2.2: car screens only.)
+16. Search several sources at once. (0.2.3: tick any number; results
+   grouped by source.)
+17. Add new free sites, whatever their structure. (0.2.3: "Add a site":
+   name, home page, optional search address with {q}; opens in a built-in
+   browser that lists the music files on each page and catches taps on
+   them, to preview and download. "Use this page for searching" learns the
+   search address from a search done on the site.)
+18. Internet Archive results unrelated to the search. (0.2.3: radio /
+   podcast / audiobook collections left out; ranked by how much of the
+   search is in the title and artist, then popularity.)
 
 ## Ideas
 

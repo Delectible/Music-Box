@@ -134,4 +134,36 @@ void main() {
     expect(isNetworkError(HttpFailure('busy', 503)), isTrue);
     expect(isNetworkError(HttpFailure('missing', 404)), isFalse);
   });
+
+  test('Internet Archive: titles and artists that match come first', () {
+    final docs = <Map<Object?, Object?>>[
+      {'title': 'Concert Grande - Chopin Etudes', 'creator': 'Radio host', 'downloads': 90000},
+      {
+        'title': '24 Etudes',
+        'creator': ['Alfred Cortot', 'Frédéric Chopin'],
+        'downloads': 300,
+        'collection': ['audio_music'],
+      },
+      {'title': 'Something else', 'creator': 'Nobody', 'downloads': 1000000},
+    ];
+    InternetArchive.rank(docs, 'chopin etudes cortot');
+    expect(docs.first['title'], '24 Etudes');
+    expect(docs.last['title'], 'Something else');
+  });
+
+  test('added sites: search address from an example search', () {
+    expect(
+      CustomSite.templateFrom('https://music.example/search?q=miles+davis&page=1', 'miles davis'),
+      'https://music.example/search?q={q}&page=1',
+    );
+    expect(
+      CustomSite.templateFrom('https://e.org/find/miles%20davis', 'miles davis'),
+      'https://e.org/find/{q}',
+    );
+    const site = CustomSite(id: 'a', name: 'E', home: 'https://e.org', search: 'https://e.org/s?q={q}');
+    expect(site.searchUri('a&b').toString(), 'https://e.org/s?q=a%26b');
+    final back = CustomSite.decode(CustomSite.encode([site])).single;
+    expect(back.search, site.search);
+    expect(CustomSite.decode('not json'), isEmpty);
+  });
 }

@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../core/crash_log.dart';
 import '../core/downloads.dart';
+import '../core/http.dart';
 import '../core/preview.dart';
 import '../core/scope.dart';
 import '../core/sources.dart';
 import '../core/tag_fixer.dart';
+import 'browser_screen.dart';
 import 'folders_screen.dart';
 
 List<MusicSource> _sources(BuildContext context) {
@@ -15,7 +17,15 @@ List<MusicSource> _sources(BuildContext context) {
   return allSources(jamendoKey: s.jamendoKey, lossless: s.preferLossless);
 }
 
-/// Search a source, open an album, download songs straight into the library.
+/// One source's part of a search.
+class _Result {
+  List<RemoteItem>? items;
+  String? error;
+  bool get loading => items == null && error == null;
+}
+
+/// Search one or more sources at once, open an album, download songs
+/// straight into the library. Added websites open in the browser.
 class GetMusicScreen extends StatefulWidget {
   const GetMusicScreen({super.key});
 
@@ -25,34 +35,77 @@ class GetMusicScreen extends StatefulWidget {
 
 class _GetMusicScreenState extends State<GetMusicScreen> {
   final _query = TextEditingController();
-  List<RemoteItem>? _results;
-  String? _error;
-  bool _busy = false;
+  Map<String, _Result>? _results;
+  String _searched = '';
   int _searchId = 0;
 
-  Future<void> _search(MusicSource source) async {
+  List<String> _ticked(List<MusicSource> builtIn, List<CustomSite> sites) {
+    final ids = {...builtIn.map((x) => x.id), ...sites.map((x) => x.id)};
+    final t = AppScope.of(context).settings.sources.where(ids.contains).toList();
+    return t.isEmpty ? [builtIn.first.id] : t;
+  }
+
+  void _toggle(String id, List<String> ticked) {
+    final s = AppScope.of(context).settings;
+    if (id == 'link') {
+      // A pasted link isn't a search: it's on its own.
+      s.sources = ['link'];
+    } else if (ticked.contains(id)) {
+      final next = [...ticked]..remove(id);
+      s.sources = next.isEmpty ? [id] : next;
+    } else {
+      s.sources = [...ticked.where((x) => x != 'link'), id];
+    }
+    setState(() => _results = null);
+  }
+
+  Future<void> _search(List<MusicSource> sources, List<CustomSite> sites, List<String> ticked) async {
     final q = _query.text.trim();
     if (q.isEmpty) return;
     FocusScope.of(context).unfocus();
     final id = ++_searchId;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final r = await source.search(q);
-      if (id != _searchId || !mounted) return;
-      if (source is DirectLink && r.isNotEmpty) {
-        await _openItem(context, source, r.first);
-        return;
+    if (ticked.contains('link')) {
+      final link = sources.firstWhere((x) => x.id == 'link');
+      final r = await link.search(q);
+      if (!mounted) return;
+      if (r.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That isn\'t a web link')));
+      } else {
+        await openRemoteItem(context, link, r.first);
       }
-      setState(() => _results = r);
-    } on Object catch (e, st) {
-      CrashLog.record(e, st, where: 'search ${source.id}');
-      if (mounted && id == _searchId) setState(() => _error = 'Search failed: $e');
-    } finally {
-      if (mounted && id == _searchId) setState(() => _busy = false);
+      return;
     }
+    final results = <String, _Result>{for (final t in ticked) t: _Result()};
+    setState(() {
+      _results = results;
+      _searched = q;
+    });
+    for (final t in ticked) {
+      final src = sources.where((x) => x.id == t).firstOrNull;
+      final r = results[t]!;
+      if (src == null) {
+        r.items = const []; // an added site: opened from its card
+        continue;
+      }
+      if (src.needsKey) {
+        r.error = 'key';
+        continue;
+      }
+      unawaited(
+        src
+            .search(q)
+            .then((items) => r.items = items)
+            .catchError((Object e, StackTrace st) {
+              CrashLog.record(e, st, where: 'search ${src.id}');
+              r.error = friendlyError(e);
+              return const <RemoteItem>[];
+            })
+            .whenComplete(() {
+              if (mounted && id == _searchId) setState(() {});
+            }),
+      );
+    }
+    setState(() {});
   }
 
   @override
@@ -70,7 +123,15 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
       listenable: s,
       builder: (context, _) {
         final sources = _sources(context);
-        final source = sources.where((x) => x.id == s.source).firstOrNull ?? sources.first;
+        final sites = CustomSite.decode(s.customSitesJson);
+        final ticked = _ticked(sources, sites);
+        final link = ticked.contains('link');
+        final names = [
+          for (final t in ticked)
+            sources.where((x) => x.id == t).firstOrNull?.name ??
+                sites.where((x) => x.id == t).firstOrNull?.name ??
+                t,
+        ];
         return Column(
           children: [
             Padding(
@@ -85,17 +146,36 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                           for (final x in sources)
                             Padding(
                               padding: const EdgeInsets.all(4),
-                              child: ChoiceChip(
+                              child: FilterChip(
                                 padding: const EdgeInsets.all(8),
                                 label: Text(x.name, style: const TextStyle(fontSize: 16)),
-                                selected: x.id == source.id,
-                                onSelected: (_) => setState(() {
-                                  s.source = x.id;
-                                  _results = null;
-                                  _error = null;
-                                }),
+                                selected: ticked.contains(x.id),
+                                onSelected: (_) => _toggle(x.id, ticked),
                               ),
                             ),
+                          for (final x in sites)
+                            Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: GestureDetector(
+                                onLongPress: () => _editSite(context, x),
+                                child: FilterChip(
+                                  padding: const EdgeInsets.all(8),
+                                  avatar: const Icon(Icons.public_rounded, size: 18),
+                                  label: Text(x.name, style: const TextStyle(fontSize: 16)),
+                                  selected: ticked.contains(x.id),
+                                  onSelected: (_) => _toggle(x.id, ticked),
+                                ),
+                              ),
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: ActionChip(
+                              padding: const EdgeInsets.all(8),
+                              avatar: const Icon(Icons.add_rounded),
+                              label: const Text('Add a site', style: TextStyle(fontSize: 16)),
+                              onPressed: () => _editSite(context, null),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -120,26 +200,24 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                       controller: _query,
                       style: const TextStyle(fontSize: 19),
                       textInputAction: TextInputAction.search,
-                      keyboardType: source is DirectLink ? TextInputType.url : TextInputType.text,
+                      keyboardType: link ? TextInputType.url : TextInputType.text,
                       decoration: InputDecoration(
-                        hintText: source is DirectLink
-                            ? 'https://… link to a music file'
-                            : 'Search ${source.name}',
-                        prefixIcon: Icon(source is DirectLink ? Icons.link_rounded : Icons.search_rounded),
+                        hintText: link ? 'https://… link to a music file' : 'Search ${names.join(', ')}',
+                        prefixIcon: Icon(link ? Icons.link_rounded : Icons.search_rounded),
                         filled: true,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      onSubmitted: (_) => _search(source),
+                      onSubmitted: (_) => _search(sources, sites, ticked),
                     ),
                   ),
                   const SizedBox(width: 10),
                   FilledButton(
                     style: FilledButton.styleFrom(minimumSize: const Size(110, 56)),
-                    onPressed: _busy || source.needsKey ? null : () => _search(source),
-                    child: Text(source is DirectLink ? 'Open' : 'Search'),
+                    onPressed: () => _search(sources, sites, ticked),
+                    child: Text(link ? 'Open' : 'Search'),
                   ),
                 ],
               ),
@@ -148,63 +226,234 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
               padding: const EdgeInsets.fromLTRB(28, 2, 28, 6),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(source.blurb, style: TextStyle(color: cs.onSurfaceVariant)),
+                child: Text(
+                  ticked.length > 1
+                      ? 'Searching ${ticked.length} sources at once. Long-press an added site to edit it.'
+                      : (sources.where((x) => x.id == ticked.first).firstOrNull?.blurb ??
+                            'Your site: opens in the browser, music files on each page can be downloaded'),
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
               ),
             ),
-            if (_busy) const LinearProgressIndicator(),
-            Expanded(child: _body(context, source)),
+            if (_results?.values.any((r) => r.loading) ?? false) const LinearProgressIndicator(),
+            Expanded(child: _body(context, sources, sites, ticked)),
           ],
         );
       },
     );
   }
 
-  Widget _body(BuildContext context, MusicSource source) {
-    if (source.needsKey) return const _JamendoKey();
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(_error!, textAlign: TextAlign.center),
-        ),
-      );
-    }
+  Widget _body(BuildContext context, List<MusicSource> sources, List<CustomSite> sites, List<String> ticked) {
     final r = _results;
+    final tt = Theme.of(context).textTheme;
     if (r == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            source is DirectLink
+      final open = sites.where((x) => ticked.contains(x.id)).toList();
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          if (ticked.contains('jamendo') && sources.firstWhere((x) => x.id == 'jamendo').needsKey)
+            const _JamendoKey(),
+          Text(
+            ticked.contains('link')
                 ? 'Paste a link to an MP3, FLAC or other music file. Roadie names and tags it, then adds it to your library.'
-                : 'Search for an artist, album or song. Downloads land in your library with covers and tags.',
+                : 'Search for an artist, album or song. Tick more than one source to search them all at once. '
+                      'Downloads land in your library with covers and tags.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
+            style: tt.titleMedium,
           ),
-        ),
+          for (final x in open)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Center(
+                child: FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(minimumSize: const Size(240, 56)),
+                  onPressed: () => openBrowser(context, url: x.homeUri, siteName: x.name, site: x),
+                  icon: const Icon(Icons.public_rounded),
+                  label: Text('Browse ${x.name}'),
+                ),
+              ),
+            ),
+        ],
       );
     }
-    if (r.isEmpty) return const Center(child: Text('Nothing found'));
     return LayoutBuilder(
       builder: (context, box) {
         final cols = (box.maxWidth / 210).floor().clamp(2, 8);
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 120),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols,
-            childAspectRatio: 0.74,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-          ),
-          itemCount: r.length,
-          itemBuilder: (context, i) => _ItemCard(item: r[i], onTap: () => _openItem(context, source, r[i])),
-        );
+        final slivers = <Widget>[];
+        for (final e in r.entries) {
+          final src = sources.where((x) => x.id == e.key).firstOrNull;
+          final site = sites.where((x) => x.id == e.key).firstOrNull;
+          final res = e.value;
+          final name = src?.name ?? site?.name ?? e.key;
+          slivers.add(
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+                child: Row(
+                  children: [
+                    Text(name, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 12),
+                    if (res.loading)
+                      const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2.5))
+                    else if (site == null && res.error == null)
+                      Text('${res.items!.length} found', style: tt.bodyMedium),
+                  ],
+                ),
+              ),
+            ),
+          );
+          if (site != null) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      style: FilledButton.styleFrom(minimumSize: const Size(260, 56)),
+                      onPressed: () => openBrowser(
+                        context,
+                        url: site.search.contains('{q}') ? site.searchUri(_searched) : site.homeUri,
+                        siteName: site.name,
+                        site: site,
+                      ),
+                      icon: const Icon(Icons.open_in_browser_rounded),
+                      label: Text(
+                        site.search.contains('{q}')
+                            ? 'See "$_searched" on ${site.name}'
+                            : 'Browse ${site.name}',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          } else if (res.error == 'key') {
+            slivers.add(const SliverToBoxAdapter(child: _JamendoKey()));
+          } else if (res.error != null) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Text('Search failed: ${res.error}'),
+                ),
+              ),
+            );
+          } else if (res.items != null && res.items!.isEmpty) {
+            slivers.add(
+              const SliverToBoxAdapter(
+                child: Padding(padding: EdgeInsets.symmetric(horizontal: 18), child: Text('Nothing found')),
+              ),
+            );
+          } else if (res.items != null) {
+            slivers.add(
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                sliver: SliverGrid.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    childAspectRatio: 0.74,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                  ),
+                  itemCount: res.items!.length,
+                  itemBuilder: (context, i) => _ItemCard(
+                    item: res.items![i],
+                    onTap: () => openRemoteItem(context, src!, res.items![i]),
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+        slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 120)));
+        return CustomScrollView(slivers: slivers);
       },
     );
   }
+
+  /// Add (site == null) or edit a website source.
+  Future<void> _editSite(BuildContext context, CustomSite? site) async {
+    final s = AppScope.of(context).settings;
+    final name = TextEditingController(text: site?.name ?? '');
+    final home = TextEditingController(text: site?.home ?? 'https://');
+    final search = TextEditingController(text: site?.search ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(site == null ? 'Add a site' : 'Edit ${site.name}'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: home,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(labelText: 'Home page', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: search,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Search address (optional)',
+                    hintText: 'https://example.org/search?q={q}',
+                    helperText:
+                        'Where {q} is, your search words go. Or set it later from the browser\'s menu.',
+                    helperMaxLines: 3,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          if (site != null)
+            TextButton(onPressed: () => Navigator.of(context).pop('delete'), child: const Text('Remove')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(context).pop('save'), child: const Text('Save')),
+        ],
+      ),
+    );
+    final sites = CustomSite.decode(s.customSitesJson);
+    if (result == 'delete' && site != null) {
+      s.customSitesJson = CustomSite.encode(sites.where((x) => x.id != site.id).toList());
+      s.sources = s.sources.where((x) => x != site.id).toList();
+    } else if (result == 'save') {
+      var url = home.text.trim();
+      if (!url.startsWith('http')) url = 'https://$url';
+      final u = Uri.tryParse(url);
+      if (u != null && u.host.isNotEmpty) {
+        final n = name.text.trim().isEmpty ? u.host : name.text.trim();
+        var q = search.text.trim();
+        if (q.isNotEmpty && !q.startsWith('http')) q = 'https://$q';
+        final next = CustomSite(
+          id: site?.id ?? 'site-${DateTime.now().millisecondsSinceEpoch}',
+          name: n,
+          home: url,
+          search: q,
+        );
+        s.customSitesJson = CustomSite.encode(
+          site == null ? [...sites, next] : [for (final x in sites) x.id == site.id ? next : x],
+        );
+        if (site == null) s.sources = [...s.sources.where((x) => x != 'link'), next.id];
+      }
+    }
+    name.dispose();
+    home.dispose();
+    search.dispose();
+  }
 }
 
-Future<void> _openItem(BuildContext context, MusicSource source, RemoteItem item) =>
+Future<void> openRemoteItem(BuildContext context, MusicSource source, RemoteItem item) =>
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => _ItemScreen(source: source, item: item),
