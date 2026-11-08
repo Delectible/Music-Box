@@ -12,11 +12,11 @@
    chosen folder (default Music/Roadie), MusicBrainz tags and covers.
    tidal.squid.wtf declined: it serves TIDAL's catalogue without the rights.)
 3. Turn bottom-row tabs on and off (already in 0.1.0: Settings > Tabs).
-4. App icon inspired by a vinyl record, something different (4 options
-   sent: A groove road, B horizon, C tacho, D wheel; waiting on a pick).
+4. App icon inspired by a vinyl record, something different (0.2.0: B, the
+   record setting over the road, polished; source in docs/icon.)
 5. Visualisers like old Windows Media Player / iTunes, from the home
-   screen and the player, one using the cover. (0.2.0: 10 styles; trim to
-   the ones picked.)
+   screen and the player, one using the cover. (0.2.0: 9 styles, all but
+   Cover ring.)
 6. Choose where music comes from: include / exclude folders. (0.2.0)
 7. Rich metadata: look up missing tags on a database, for downloads and
    existing files. (0.2.0: MusicBrainz + Cover Art Archive, Fix tags.)

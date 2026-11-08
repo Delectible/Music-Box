@@ -66,8 +66,6 @@ class VizPainter extends CustomPainter {
         _mirror(c, s);
       case VizStyle.scope:
         _scope(c, s);
-      case VizStyle.coverRing:
-        _coverRing(c, s);
       case VizStyle.coverBloom:
         _coverBloom(c, s);
       case VizStyle.ambience:
@@ -167,27 +165,6 @@ class VizPainter extends CustomPainter {
           ..strokeJoin = StrokeJoin.round
           ..color = Color.fromRGBO(80, 255, 170, a),
       );
-    }
-  }
-
-  /// Spectrum spokes around the (round) cover.
-  void _coverRing(Canvas c, Size s) {
-    c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF0D0A14));
-    final center = s.center(Offset.zero);
-    final r = coverSize / 2 + 10;
-    const n = 120;
-    final hue = HSLColor.fromColor(accent).hue;
-    final p = Paint()
-      ..strokeWidth = max(3, r * 2 * pi / n * 0.55)
-      ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < n; i++) {
-      final a = i / n * pi * 2 - pi / 2;
-      final half = i < n / 2 ? i : n - i;
-      final v = f.bands[(half / (n / 2) * (VizFeed.bandCount - 1)).round()];
-      final l = 10 + v * min(s.width, s.height) * 0.22;
-      p.color = _hsl(hue - 30 + i * 1.0, .95, .6);
-      final d = Offset(cos(a), sin(a));
-      c.drawLine(center + d * r, center + d * (r + l), p);
     }
   }
 

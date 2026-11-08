@@ -11,7 +11,6 @@ enum VizStyle {
   bars('Bars'),
   mirror('Mirror'),
   scope('Scope'),
-  coverRing('Cover ring'),
   coverBloom('Cover bloom'),
   ambience('Ambience'),
   ribbons('Ribbons'),
@@ -22,7 +21,7 @@ enum VizStyle {
   final String label;
   const VizStyle(this.label);
 
-  bool get usesCover => this == coverRing || this == coverBloom;
+  bool get usesCover => this == coverBloom;
   static VizStyle byName(String n) => values.where((v) => v.name == n).firstOrNull ?? bars;
 }
 

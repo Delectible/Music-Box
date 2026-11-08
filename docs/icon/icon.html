@@ -1,0 +1,51 @@
+<!doctype html><html><head><style>html,body{margin:0;background:transparent}svg{display:block}</style></head><body>
+<script>
+const P=new URLSearchParams(location.search);const layer=P.get('layer')||'all';const px=+(P.get('px')||1024);const legacy=P.get('legacy')||'';
+const vb=legacy?'18 18 72 72':'0 0 108 108';
+const showBg=layer!=='fg', showFg=layer!=='bg';
+let grid='';const hy=[2,4.6,8,12.6,18.8,27,38,52];for(const d of hy){grid+=`<line x1="-10" y1="${60+d}" x2="118" y2="${60+d}" stroke="url(#gridH)" stroke-width="${0.35+d*0.012}" opacity="${0.35+d/60}"/>`}
+for(let i=-9;i<=9;i++){const bx=54+i*13;grid+=`<line x1="54" y1="60" x2="${bx}" y2="118" stroke="#ff4f8b" stroke-width="0.45" opacity="${0.5-Math.abs(i)*0.03}"/>`}
+let stars='';const st=[[26,24,.5],[34,16,.35],[71,20,.45],[82,30,.4],[44,27,.3],[63,13,.35],[88,22,.3],[22,36,.3]];for(const [x,y,r] of st)stars+=`<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" opacity=".75"/>`;
+let grooves='';for(let r=12.2;r<26;r+=1.15)grooves+=`<circle cx="54" cy="60" r="${r.toFixed(2)}" fill="none" stroke="#ffffff" stroke-opacity="${r%2.3<1.15?0.07:0.035}" stroke-width="0.35"/>`;
+let dashes='';for(const [y1,y2] of [[62,64],[66.5,70],[74,79.5],[86,95],[103,118]])dashes+=`<line x1="54" y1="${y1}" x2="54" y2="${y2}" stroke="#ffd23f" stroke-width="${0.5+(y1-60)*0.035}" stroke-linecap="round"/>`;
+let cuts='';for(const [y,h] of [[61.2,0.5],[63.2,0.8],[65.6,1.1]]);
+document.body.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="${vb}">
+<defs>
+ <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="60"><stop offset="0" stop-color="#0b0720"/><stop offset=".45" stop-color="#2b1153"/><stop offset=".8" stop-color="#5e1f66"/><stop offset="1" stop-color="#8e2f72"/></linearGradient>
+ <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0b2b"/><stop offset="1" stop-color="#07040f"/></linearGradient>
+ <linearGradient id="gridH" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="108" y2="0"><stop offset="0" stop-color="#ff4f8b" stop-opacity="0"/><stop offset=".5" stop-color="#ff6fa0"/><stop offset="1" stop-color="#ff4f8b" stop-opacity="0"/></linearGradient>
+ <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe066"/><stop offset=".55" stop-color="#ff9a3d"/><stop offset="1" stop-color="#ff4f8b"/></linearGradient>
+ <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd23f"/><stop offset=".7" stop-color="#ff6a5c"/><stop offset="1" stop-color="#ff4f8b"/></linearGradient>
+ <radialGradient id="disc" cx=".42" cy=".3" r=".75"><stop offset="0" stop-color="#2a2233"/><stop offset=".6" stop-color="#151019"/><stop offset="1" stop-color="#0a080d"/></radialGradient>
+ <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff7a59" stop-opacity=".75"/><stop offset=".45" stop-color="#ff4f8b" stop-opacity=".28"/><stop offset="1" stop-color="#ff4f8b" stop-opacity="0"/></radialGradient>
+ <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1640"/><stop offset="1" stop-color="#120a1e"/></linearGradient>
+ <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".0"/><stop offset=".5" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+ <clipPath id="above"><rect x="0" y="0" width="108" height="60"/></clipPath>
+ <clipPath id="legacy"><rect x="18" y="18" width="72" height="72" rx="16"/></clipPath>
+ <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation=".6"/></filter>
+</defs>
+<g clip-path="${legacy?'url(#legacy)':''}">
+${showBg?`<rect width="108" height="60" fill="url(#sky)"/>${stars}
+ <rect y="60" width="108" height="48" fill="url(#ground)"/>
+ <g>${grid}</g>
+ <circle cx="54" cy="58" r="40" fill="url(#glow)"/>`:''}
+${showFg?`<g clip-path="url(#above)">
+  <circle cx="54" cy="60" r="27" fill="url(#disc)"/>
+  ${grooves}
+  <circle cx="54" cy="60" r="26.4" fill="none" stroke="url(#rim)" stroke-width="1.2"/>
+  <circle cx="54" cy="60" r="22.6" fill="none" stroke="url(#rim)" stroke-width=".55" opacity=".75"/>
+  <circle cx="54" cy="60" r="18.8" fill="none" stroke="url(#rim)" stroke-width=".4" opacity=".5"/>
+  <path d="M 33.5 47 A 24 24 0 0 1 52 36.1" fill="none" stroke="url(#sheen)" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="54" cy="60" r="11" fill="url(#sun)"/>
+  <rect x="42" y="53.2" width="24" height=".9" fill="#2a1640" opacity=".55"/>
+  <rect x="42" y="55.8" width="24" height="1.3" fill="#2a1640" opacity=".55"/>
+  <rect x="42" y="58.4" width="24" height="1.6" fill="#2a1640" opacity=".55"/>
+  <circle cx="54" cy="60" r="1.5" fill="#120a1e"/>
+ </g>
+ <line x1="18" y1="60" x2="90" y2="60" stroke="#ffb0c8" stroke-width=".5" opacity=".9"/>
+ <line x1="10" y1="60" x2="98" y2="60" stroke="#ff4f8b" stroke-width="1.6" opacity=".35" filter="url(#soft)"/>
+ <path d="M52.6 60 L35 118 L73 118 L55.4 60Z" fill="url(#road)"/>
+ <path d="M52.6 60 L35 118 M55.4 60 L73 118" stroke="#ffd23f" stroke-opacity=".55" stroke-width=".7"/>
+ ${dashes}`:''}
+</g></svg>`;
+</script></body></html>

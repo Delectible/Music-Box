@@ -128,7 +128,7 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
             child: LayoutBuilder(
               builder: (context, box) {
                 final short = min(box.maxWidth, box.maxHeight);
-                final cover = style == VizStyle.coverRing ? short * 0.42 : short * 0.46;
+                final cover = short * 0.46;
                 return Stack(
                   fit: StackFit.expand,
                   children: [
@@ -151,7 +151,7 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
                     if (style.usesCover && song != null)
                       Center(
                         child: Transform.translate(
-                          offset: Offset(0, style == VizStyle.coverBloom ? -short * 0.05 : 0),
+                          offset: Offset(0, -short * 0.05),
                           child: ValueListenableBuilder<int>(
                             valueListenable: _frame,
                             builder: (context, _, child) => Transform.scale(
@@ -160,14 +160,9 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
                             ),
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                shape: style == VizStyle.coverRing ? BoxShape.circle : BoxShape.rectangle,
                                 boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.6), blurRadius: 60)],
                               ),
-                              child: Art(
-                                albumId: song.albumId,
-                                size: cover,
-                                radius: style == VizStyle.coverRing ? cover / 2 : cover * 0.04,
-                              ),
+                              child: Art(albumId: song.albumId, size: cover, radius: cover * 0.04),
                             ),
                           ),
                         ),
