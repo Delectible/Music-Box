@@ -14,6 +14,9 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Size
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -155,6 +158,11 @@ class MainActivity : AudioServiceActivity() {
                         true
                     }
                 }
+                "immersive" -> {
+                    immersive = call.argument<Number>("mode")?.toInt() ?: 1
+                    applyImmersive()
+                    result.success(null)
+                }
                 "downloading" -> {
                     val active = call.argument<Number>("active")?.toInt() ?: 0
                     val done = call.argument<Number>("done")?.toInt() ?: 0
@@ -200,8 +208,32 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    /** 0: bars shown, 1: navigation buttons hidden, 2: navigation and status bar hidden. */
+    private var immersive = 1
+
+    /** Hides the bars; a swipe in from the edge shows them for a moment. */
+    private fun applyImmersive() {
+        val c = WindowCompat.getInsetsController(window, window.decorView)
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        when (immersive) {
+            0 -> c.show(WindowInsetsCompat.Type.systemBars())
+            1 -> {
+                c.show(WindowInsetsCompat.Type.statusBars())
+                c.hide(WindowInsetsCompat.Type.navigationBars())
+            }
+            else -> c.hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Android shows the bars again after dialogs, the keyboard or app switching.
+        if (hasFocus) applyImmersive()
+    }
+
     override fun onResume() {
         super.onResume()
+        applyImmersive()
         // Back from the "All files access" settings page.
         if (Build.VERSION.SDK_INT >= 30) pendingStorage?.let { it.success(canWrite()); pendingStorage = null }
     }

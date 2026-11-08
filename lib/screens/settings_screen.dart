@@ -123,6 +123,21 @@ class SettingsScreen extends StatelessWidget {
                   label: (v) => v.label,
                   onChanged: (v) => s.nav = v,
                 ),
+                _Choice<BarsMode>(
+                  icon: Icons.fullscreen_rounded,
+                  title: 'Full screen',
+                  value: s.bars,
+                  values: BarsMode.values,
+                  label: (v) => v.label,
+                  onChanged: (v) => s.bars = v,
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
+                  child: Text(
+                    'Swipe in from the edge to bring hidden bars back for a moment',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
                 _Switch(
                   icon: Icons.animation_rounded,
                   title: 'Animations',

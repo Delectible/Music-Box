@@ -26,6 +26,15 @@ enum PlayerStyle {
   const PlayerStyle(this.label, this.blurb);
 }
 
+enum BarsMode {
+  shown('Always shown'),
+  navigation('Hide navigation buttons'),
+  all('Hide navigation and status bar');
+
+  final String label;
+  const BarsMode(this.label);
+}
+
 enum NavStyle {
   auto('Automatic'),
   rail('Side rail'),
@@ -102,6 +111,10 @@ class Settings extends ChangeNotifier {
 
   NavStyle get nav => _enum('nav', NavStyle.values, NavStyle.auto);
   set nav(NavStyle v) => _set('nav', v);
+
+  /// System bars: what hides (a swipe from the edge shows them for a moment).
+  BarsMode get bars => _enum('bars', BarsMode.values, BarsMode.navigation);
+  set bars(BarsMode v) => _set('bars', v);
 
   bool get animations => _p.getBool('animations') ?? true;
   set animations(bool v) => _set('animations', v);

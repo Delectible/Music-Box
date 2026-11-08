@@ -92,6 +92,9 @@
    highlighted, tap to jump.)
 37. Smart playlists. (0.3.0: Road trip mix (2 h, daily), Recently added,
    Most played, Forgotten favourites, Not heard in a while, Never played.)
+38. Navigation buttons hide themselves (immersive). (0.3.1: Settings >
+   Full screen: hide navigation buttons (default) / navigation and status
+   bar / always shown; a swipe from the edge shows them for a moment.)
 
 ## Ideas
 

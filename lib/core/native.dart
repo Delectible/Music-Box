@@ -67,6 +67,15 @@ class Native {
     }
   }
 
+  /// 0: bars shown, 1: navigation buttons hidden, 2: all bars hidden.
+  static Future<void> immersive(int mode) async {
+    try {
+      await _call<void>('immersive', {'mode': mode});
+    } on PlatformException {
+      // Not fatal: the bars just stay.
+    }
+  }
+
   static Future<String> nativeCrashes({bool clear = false}) async =>
       await _call<String>('nativeCrashes', {'clear': clear}) ?? '';
 }

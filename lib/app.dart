@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core/downloads.dart';
+import 'core/native.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/playlists.dart';
@@ -50,6 +51,14 @@ class _RoadieAppState extends State<RoadieApp> {
     unawaited(warmCover(ctx, id));
   }
 
+  BarsMode? _barsNow;
+  void _bars() {
+    final b = widget.settings.bars;
+    if (b == _barsNow) return;
+    _barsNow = b;
+    unawaited(Native.immersive(b.index));
+  }
+
   // Day & night theme: look at the clock every minute.
   Timer? _clock;
   bool _night = false;
@@ -63,6 +72,8 @@ class _RoadieAppState extends State<RoadieApp> {
       if (n != _night && mounted) setState(() => _night = n);
     });
     widget.player.addListener(_warm);
+    widget.settings.addListener(_bars);
+    _bars();
     PlayerSheet.opener = (_) {
       final nav = _nav.currentState;
       if (nav == null || widget.player.current == null) return;
@@ -74,6 +85,7 @@ class _RoadieAppState extends State<RoadieApp> {
   void dispose() {
     _clock?.cancel();
     widget.player.removeListener(_warm);
+    widget.settings.removeListener(_bars);
     _accent.dispose();
     _downloads.dispose();
     _fixer.dispose();

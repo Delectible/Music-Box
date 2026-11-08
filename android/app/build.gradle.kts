@@ -62,6 +62,8 @@ kotlin {
 dependencies {
     // Reading and writing tags and covers inside music files.
     implementation("net.jthink:jaudiotagger:3.0.1")
+    // Hiding the system bars (full screen setting).
+    implementation("androidx.core:core-ktx:1.13.1")
 }
 
 flutter {

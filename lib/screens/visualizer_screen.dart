@@ -4,7 +4,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/native.dart';
@@ -44,12 +43,14 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
   Timer? _hide;
   bool _needsPermission = false;
   int? _session;
+  int _barsBefore = 1;
 
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick)..start();
-    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky));
+    _barsBefore = AppScope.of(context).settings.bars.index;
+    unawaited(Native.immersive(2));
     unawaited(WakelockPlus.enable().catchError((Object _) {}));
     _showControls();
     if (!widget.simulated) unawaited(_connect());
@@ -103,7 +104,7 @@ class _VisualizerScreenState extends State<VisualizerScreen> with SingleTickerPr
     _ticker.dispose();
     _scene.feed.stop();
     _frame.dispose();
-    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    unawaited(Native.immersive(_barsBefore));
     unawaited(WakelockPlus.disable().catchError((Object _) {}));
     super.dispose();
   }
