@@ -11,8 +11,12 @@ Same workflow as Sisyphus and Darkroom (Delectible/...).
   tweaks, run only the tests that matter (full suite before committing).
 - Big changes: ask first. Open-ended visual changes: show 2–3 screenshot
   options before building (`SHOTS=dir flutter test test/screens_test.dart`).
-- Not on GitHub yet: work locally, commit freely, push nothing until he
-  says so. Then the Sisyphus flow (main → Play internal testing).
+- Repo: Delectible/Music-Box. Work on the session branch; commit freely.
+  **Only on "push"**: fast-forward onto `main` (`git fetch origin main &&
+  git merge-base --is-ancestor origin/main HEAD && git push origin
+  HEAD:main`). Every push to `main` runs `.github/workflows/build-apk.yml`:
+  analyze + test, then the APK on Releases (`build-<n>`) and, once the
+  `PLAY_SERVICE_ACCOUNT_JSON` secret is set, Play internal testing.
 - User-visible change: bump `pubspec.yaml` version+build and
   `AppInfo.version`; set `AppInfo.latest` (plain words).
 - Commit messages plain: no session links, no Co-Authored-By.
@@ -31,7 +35,8 @@ Same workflow as Sisyphus and Darkroom (Delectible/...).
 
 - Changing `com.dingo.roadie`; deleting `AndroidManifest.xml`,
   `android/app/build.gradle.kts` or `MainActivity.kt`.
-- Committing signing keys.
+- Committing signing keys (only the public test key
+  `android/app/roadie-test.jks` is in the repo).
 
 ## Checks
 

@@ -33,4 +33,5 @@ ios/Runner/GeneratedPluginRegistrant.*
 # Signing keys stay out of the repo (only the public test key is committed).
 *.jks
 *.keystore
+!android/app/roadie-test.jks
 

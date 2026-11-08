@@ -23,10 +23,31 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release builds are signed with the private upload key when CI hands it
+    // over (GitHub secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD,
+    // decoded to ROADIE_KEYSTORE by the workflow). Without it they use the
+    // public test key, so every test build installs over the last one.
+    val uploadKeystore = System.getenv("ROADIE_KEYSTORE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        create("test") {
+            storeFile = file("roadie-test.jks")
+            storePassword = "roadie"
+            keyAlias = "roadie"
+            keyPassword = "roadie"
+        }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("ROADIE_KEYSTORE_PASSWORD")
+                keyAlias = "upload"
+                keyPassword = System.getenv("ROADIE_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Debug keys until the store upload key is set up (as in Sisyphus).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (uploadKeystore != null) "upload" else "test")
         }
     }
 }

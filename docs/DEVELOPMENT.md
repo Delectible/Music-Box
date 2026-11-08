@@ -35,3 +35,15 @@ then `flutter pub get`.
 
 `SHOTS=dir flutter test test/screens_test.dart` writes car-sized (1280x720)
 and phone screenshots.
+
+## Builds
+
+Every push to `main` runs `.github/workflows/build-apk.yml`: `flutter
+analyze` and `flutter test`, then a release APK and app bundle (build
+number = run number). The APK is published on the Releases page as
+`build-<n>`. Signing uses the upload key from the repo secrets
+`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` when set, else the
+public test key `android/app/roadie-test.jks`. With the secret
+`PLAY_SERVICE_ACCOUNT_JSON` the bundle also goes to Play internal testing
+(the first .aab must be uploaded by hand). Old releases:
+`prune-releases.yml` (run by hand).
