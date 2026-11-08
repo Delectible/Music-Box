@@ -48,6 +48,15 @@ class Native {
   static Future<void> writeTags(String path, Map<String, String> values, {String? cover}) =>
       _ch.invokeMethod('writeTags', {'path': path, 'values': values, 'cover': cover});
 
+  /// File, storage, media index row and tags for the song info screen.
+  static Future<Map<String, Object?>> fileInfo(String path, int id) async {
+    try {
+      return await _ch.invokeMapMethod<String, Object?>('fileInfo', {'path': path, 'id': id}) ?? const {};
+    } on MissingPluginException {
+      return const {};
+    }
+  }
+
   static Future<String> nativeCrashes({bool clear = false}) async =>
       await _call<String>('nativeCrashes', {'clear': clear}) ?? '';
 }

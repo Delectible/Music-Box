@@ -50,6 +50,47 @@ object Tags {
         return out
     }
 
+    /** Everything about the audio and tags, for the song info screen. */
+    fun details(path: String): Map<String, Any?> {
+        val f = AudioFileIO.read(File(path))
+        val h = f.audioHeader
+        val out = LinkedHashMap<String, Any?>()
+        out["format"] = h.format
+        out["encoding"] = h.encodingType
+        out["bitRate"] = h.bitRate
+        out["variableBitRate"] = h.isVariableBitRate
+        out["sampleRate"] = h.sampleRate
+        out["channels"] = h.channels
+        out["bitsPerSample"] = h.bitsPerSample
+        out["lossless"] = h.isLossless
+        out["durationMs"] = (h.preciseTrackLength * 1000).toLong()
+        val tag = f.tag
+        if (tag != null) {
+            out["tagType"] = tag.javaClass.simpleName.removeSuffix("Tag").ifEmpty { "Tag" }
+            val fields = ArrayList<List<String>>()
+            for (field in tag.fields) {
+                if (field.isBinary) continue
+                val v = field.toString().trim()
+                if (v.isNotEmpty()) fields += listOf(field.id, v.take(400))
+            }
+            out["fields"] = fields
+            val art = tag.firstArtwork
+            if (art != null) {
+                val bytes = art.binaryData
+                out["coverMime"] = art.mimeType
+                out["coverBytes"] = bytes?.size ?: 0
+                if (bytes != null) {
+                    val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+                    out["coverWidth"] = o.outWidth
+                    out["coverHeight"] = o.outHeight
+                }
+                out["coverCount"] = tag.artworkList.size
+            }
+        }
+        return out
+    }
+
     /** Sets the given fields (blank values clear them) and, with [cover], the front cover. */
     fun write(path: String, values: Map<String, Any?>, cover: String?) {
         val f = AudioFileIO.read(File(path))

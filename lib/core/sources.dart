@@ -28,6 +28,9 @@ class RemoteTrack {
   final String? cover;
   final String quality; // e.g. "FLAC", "MP3 320"
 
+  /// A lighter stream to preview before downloading (else [url]).
+  final Uri? preview;
+
   const RemoteTrack({
     required this.title,
     required this.url,
@@ -41,7 +44,10 @@ class RemoteTrack {
     this.length,
     this.cover,
     this.quality = '',
+    this.preview,
   });
+
+  Uri get previewUrl => preview ?? url;
 }
 
 abstract class MusicSource {
@@ -131,6 +137,7 @@ class InternetArchive extends MusicSource {
     final meta = (d['metadata'] as Map?) ?? const {};
     final files = (d['files'] as List? ?? const []).cast<Map<Object?, Object?>>();
     final best = <String, Map<Object?, Object?>>{};
+    final mp3 = <String, String>{};
     int rank(Map<Object?, Object?> f) {
       final r = _rank['${f['format']}'] ?? 0;
       return lossless ? r : (r >= 9 ? 2 : r);
@@ -142,6 +149,7 @@ class InternetArchive extends MusicSource {
       final stem = name.contains('.') ? name.substring(0, name.lastIndexOf('.')) : name;
       final cur = best[stem];
       if (cur == null || rank(f) > rank(cur)) best[stem] = f;
+      if ('${f['format']}'.contains('MP3') && (_rank['${f['format']}'] ?? 0) >= 4) mp3[stem] = name;
     }
     final album = _str(meta['title']);
     final artist = _str(meta['creator']);
@@ -150,6 +158,7 @@ class InternetArchive extends MusicSource {
     for (final f in best.values) {
       final name = '${f['name']}';
       final ext = name.contains('.') ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : 'mp3';
+      final stem = name.contains('.') ? name.substring(0, name.lastIndexOf('.')) : name;
       out.add(
         RemoteTrack(
           title: _str(f['title']).isNotEmpty
@@ -167,6 +176,7 @@ class InternetArchive extends MusicSource {
           length: _seconds(f['length']),
           cover: item.cover,
           quality: '${f['format']}',
+          preview: mp3[stem] == null ? null : Uri.https('archive.org', '/download/${item.id}/${mp3[stem]}'),
         ),
       );
     }
@@ -241,6 +251,9 @@ class Jamendo extends MusicSource {
     length: _seconds(t['duration']),
     cover: t['image'] as String? ?? t['album_image'] as String?,
     quality: lossless ? 'FLAC' : 'MP3 VBR',
+    preview: t['audio'] is String && (t['audio'] as String).isNotEmpty
+        ? Uri.parse(t['audio']! as String)
+        : null,
   );
 
   @override
@@ -289,6 +302,7 @@ class CcMixter extends MusicSource {
       final f =
           (lossless ? audio.where((f) => mime(f).contains('flac')).firstOrNull : null) ?? audio.firstOrNull;
       if (f == null) continue;
+      final mp3 = audio.where((f) => mime(f).contains('mpeg')).firstOrNull;
       final info = f['file_format_info'] as Map?;
       final ext = '${info?['default-ext'] ?? 'mp3'}';
       final artist = '${u['user_real_name'] ?? u['user_name'] ?? ''}';
@@ -311,6 +325,7 @@ class CcMixter extends MusicSource {
             url: Uri.parse('${f['download_url']}'),
             ext: ext,
             quality: ext.toUpperCase(),
+            preview: mp3 == null ? null : Uri.parse('${mp3['download_url']}'),
           ),
         ),
       );

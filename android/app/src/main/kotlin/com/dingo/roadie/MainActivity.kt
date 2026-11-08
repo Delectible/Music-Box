@@ -155,6 +155,11 @@ class MainActivity : AudioServiceActivity() {
                         true
                     }
                 }
+                "fileInfo" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    val id = (call.argument<Number>("id") ?: -1).toLong()
+                    background(result) { fileInfo(path, id) }
+                }
                 "nativeCrashes" -> {
                     val f = File(filesDir, "native_crash.txt")
                     val text = if (f.exists()) f.readText() else ""
@@ -234,6 +239,52 @@ class MainActivity : AudioServiceActivity() {
                     "size" to num(MediaStore.Audio.Media.SIZE),
                 )
             }
+        }
+        return out
+    }
+
+    /** The file on disk, its storage, Android's media index row and the tags inside. */
+    private fun fileInfo(path: String, id: Long): Map<String, Any?> {
+        val out = HashMap<String, Any?>()
+        val f = File(path)
+        out["exists"] = f.exists()
+        out["bytes"] = f.length()
+        out["modified"] = f.lastModified()
+        out["canRead"] = f.canRead()
+        out["canWrite"] = f.canWrite()
+        val root = roots().firstOrNull { path.startsWith("$it/") }
+        out["root"] = root
+        out["removable"] = root != null && root != Environment.getExternalStorageDirectory().path
+        if (root != null) {
+            try {
+                val st = android.os.StatFs(root)
+                out["volumeFree"] = st.availableBytes
+                out["volumeTotal"] = st.totalBytes
+            } catch (_: Exception) {
+            }
+        }
+        if (id >= 0) {
+            val row = LinkedHashMap<String, String>()
+            try {
+                contentResolver.query(
+                    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id), null, null, null, null,
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        for (i in 0 until c.columnCount) {
+                            if (c.getType(i) == android.database.Cursor.FIELD_TYPE_BLOB || c.isNull(i)) continue
+                            val v = c.getString(i) ?: continue
+                            if (v.isNotBlank()) row[c.getColumnName(i)] = v
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            out["mediaStore"] = row
+        }
+        try {
+            out["tags"] = Tags.details(path)
+        } catch (e: Throwable) {
+            out["tagsError"] = e.message ?: e.toString()
         }
         return out
     }

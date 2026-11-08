@@ -4,6 +4,7 @@ import '../core/models.dart';
 import '../core/scope.dart';
 import '../screens/collection_screen.dart';
 import '../screens/fix_tags_sheet.dart';
+import '../screens/song_info_screen.dart';
 import 'art.dart';
 
 void openCollection(BuildContext context, Collection c) =>
@@ -63,6 +64,7 @@ Future<void> showSongMenu(BuildContext context, Song song) {
           if (a != null) openCollection(context, a);
         },
       ),
+      (Icons.info_outline_rounded, 'Song info', () => openSongInfo(context, song)),
       (Icons.auto_fix_high_rounded, 'Fix tags…', () => showFixTags(context, song)),
     ],
   );

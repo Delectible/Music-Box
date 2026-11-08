@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadie/app.dart';
 import 'package:roadie/core/library.dart';
@@ -11,6 +12,7 @@ import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/screens/folders_screen.dart';
+import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -182,6 +184,72 @@ void main() {
     await _settle(tester);
     expect(find.textContaining('Hollow Pines'), findsOneWidget);
     await shot(tester, 'car_10_folders');
+    a.engine.close();
+  });
+
+  testWidgets('song info', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    final song = a.library.albums[0].songs[2];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('roadie/library'),
+      (call) async => call.method != 'fileInfo'
+          ? null
+          : {
+              'exists': true,
+              'bytes': 31457280,
+              'modified': DateTime(2025, 3, 4, 21, 15).millisecondsSinceEpoch,
+              'canWrite': true,
+              'root': '/storage/emulated/0',
+              'removable': false,
+              'volumeFree': 41 * 1024 * 1024 * 1024,
+              'volumeTotal': 128 * 1024 * 1024 * 1024,
+              'mediaStore': {
+                '_id': '${song.id}',
+                'mime_type': 'audio/flac',
+                'volume_name': 'external_primary',
+              },
+              'tags': {
+                'format': 'FLAC 16 bits',
+                'encoding': 'FLAC 16 bits',
+                'bitRate': '1011',
+                'variableBitRate': true,
+                'sampleRate': '44100',
+                'channels': '2',
+                'bitsPerSample': 16,
+                'lossless': true,
+                'durationMs': song.duration.inMilliseconds + 412,
+                'tagType': 'FlacTag',
+                'fields': [
+                  ['TITLE', song.title],
+                  ['ARTIST', song.artist],
+                  ['ALBUM', song.album],
+                  ['DATE', '${song.year}'],
+                  ['TRACKNUMBER', '${song.track}'],
+                  ['GENRE', song.genre],
+                  ['MUSICBRAINZ_TRACKID', '5b11f4ce-a62d-471e-81fc-a69a8278c7da'],
+                ],
+                'coverMime': 'image/jpeg',
+                'coverBytes': 84211,
+                'coverWidth': 500,
+                'coverHeight': 500,
+              },
+            },
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('roadie/library'),
+        null,
+      ),
+    );
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => SongInfoScreen(song: song))));
+    await _settle(tester);
+    expect(find.text('Lossless'), findsWidgets);
+    expect(find.textContaining('Internal storage'), findsOneWidget);
+    await shot(tester, 'car_11_song_info');
     a.engine.close();
   });
 }

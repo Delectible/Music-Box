@@ -21,6 +21,11 @@
 7. Rich metadata: look up missing tags on a database, for downloads and
    existing files. (0.2.0: MusicBrainz + Cover Art Archive, Fix tags.)
 8. Basic error / crash reporting. (0.2.0: Settings > Problem reports.)
+9. Preview a song from a source before downloading. (0.2.1: play / stop
+   on each track, streams a lighter MP3 where the source has one.)
+10. An info button on songs: everything about it, where it's stored.
+   (0.2.1: Song info in the song menu: song, file and storage, audio
+   format, cover, every tag, play stats, Android's media index.)
 
 ## Ideas
 

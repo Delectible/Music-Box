@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/crash_log.dart';
 import '../core/downloads.dart';
+import '../core/preview.dart';
 import '../core/scope.dart';
 import '../core/sources.dart';
 import '../core/tag_fixer.dart';
@@ -302,10 +303,19 @@ class _ItemScreenState extends State<_ItemScreen> {
   final _picked = <int>{};
   String? _error;
 
+  late final Preview _preview;
+
   @override
   void initState() {
     super.initState();
+    _preview = AppScope.of(context).preview;
     _load();
+  }
+
+  @override
+  void dispose() {
+    _preview.stop();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -416,24 +426,91 @@ class _ItemScreenState extends State<_ItemScreen> {
                     }),
                   ),
                 for (var i = 0; i < t.length; i++)
-                  CheckboxListTile(
-                    value: _picked.contains(i),
-                    onChanged: (v) => setState(() => v == true ? _picked.add(i) : _picked.remove(i)),
-                    title: Text('${t[i].track > 0 ? '${t[i].track}. ' : ''}${t[i].title}'),
-                    subtitle: Text(
-                      [
-                        if (t[i].artist.isNotEmpty && t[i].artist != item.artist) t[i].artist,
-                        if (t[i].length != null) _len(t[i].length!),
-                        t[i].quality,
-                      ].where((x) => x.isNotEmpty).join(' · '),
-                    ),
+                  _TrackRow(
+                    track: t[i],
+                    showArtist: t[i].artist.isNotEmpty && t[i].artist != item.artist,
+                    picked: _picked.contains(i),
+                    onPicked: (v) => setState(() => v ? _picked.add(i) : _picked.remove(i)),
                   ),
               ],
             ),
     );
   }
+}
 
-  static String _len(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+String _len(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+/// A song in an album: tap play to stream a preview, tick to download.
+class _TrackRow extends StatelessWidget {
+  final RemoteTrack track;
+  final bool showArtist;
+  final bool picked;
+  final ValueChanged<bool> onPicked;
+  const _TrackRow({
+    required this.track,
+    required this.showArtist,
+    required this.picked,
+    required this.onPicked,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pv = AppScope.of(context).preview;
+    final cs = Theme.of(context).colorScheme;
+    final url = track.previewUrl;
+    return ListenableBuilder(
+      listenable: pv,
+      builder: (context, _) {
+        final on = pv.current == url;
+        final total = on ? (pv.duration ?? track.length) : null;
+        return Column(
+          children: [
+            ListTile(
+              minTileHeight: 68,
+              leading: IconButton.filledTonal(
+                iconSize: 30,
+                tooltip: on ? 'Stop preview' : 'Preview',
+                onPressed: () => pv.toggle(url),
+                icon: on && pv.loading
+                    ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))
+                    : Icon(on ? Icons.stop_rounded : Icons.play_arrow_rounded),
+              ),
+              title: Text('${track.track > 0 ? '${track.track}. ' : ''}${track.title}'),
+              subtitle: Text(
+                [
+                  if (showArtist) track.artist,
+                  if (on && total != null)
+                    '${_len(pv.position)} / ${_len(total)}'
+                  else if (track.length != null)
+                    _len(track.length!),
+                  track.quality,
+                ].where((x) => x.isNotEmpty).join(' · '),
+              ),
+              trailing: Checkbox(value: picked, onChanged: (v) => onPicked(v ?? false)),
+              onTap: () => onPicked(!picked),
+            ),
+            if (on && total != null && total > Duration.zero)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(76, 0, 24, 8),
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 4),
+                  child: Slider(
+                    value: pv.position.inMilliseconds.clamp(0, total.inMilliseconds).toDouble(),
+                    max: total.inMilliseconds.toDouble(),
+                    onChanged: (v) => pv.seek(Duration(milliseconds: v.round())),
+                  ),
+                ),
+              ),
+            if (pv.failed == url)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('This one can\'t be previewed', style: TextStyle(color: cs.error)),
+              ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _DownloadsButton extends StatelessWidget {

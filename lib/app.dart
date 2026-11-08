@@ -4,6 +4,7 @@ import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/playlists.dart';
+import 'core/preview.dart';
 import 'core/scope.dart';
 import 'core/settings.dart';
 import 'core/tag_fixer.dart';
@@ -36,6 +37,7 @@ class _RoadieAppState extends State<RoadieApp> {
   final _nav = GlobalKey<NavigatorState>();
   late final _downloads = Downloads(widget.settings, widget.library);
   late final _fixer = TagFixer(widget.library);
+  late final _preview = Preview(widget.player);
 
   @override
   void initState() {
@@ -52,6 +54,7 @@ class _RoadieAppState extends State<RoadieApp> {
     _accent.dispose();
     _downloads.dispose();
     _fixer.dispose();
+    _preview.dispose();
     super.dispose();
   }
 
@@ -65,6 +68,7 @@ class _RoadieAppState extends State<RoadieApp> {
       playlists: widget.playlists,
       downloads: _downloads,
       fixer: _fixer,
+      preview: _preview,
       child: ListenableBuilder(
         listenable: Listenable.merge([s, _accent]),
         builder: (context, _) {
