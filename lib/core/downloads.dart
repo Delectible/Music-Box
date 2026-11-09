@@ -162,8 +162,16 @@ class Downloads extends ChangeNotifier {
         try {
           final yt = t.youtubeId;
           final fetch = yt != null
-              ? (({required void Function(double) progress}) =>
-                    YouTube.download(yt, file, cancelled: () => j.cancelled, progress: progress))
+              ? (({required void Function(double) progress}) => YouTube.download(
+                  yt,
+                  file,
+                  cancelled: () => j.cancelled,
+                  progress: progress,
+                  status: (m) {
+                    j.note = m.isEmpty ? null : m;
+                    notifyListeners();
+                  },
+                ))
               : (({required void Function(double) progress}) =>
                     Http.download(t.url, file, cancelled: () => j.cancelled, progress: progress));
           await fetch(

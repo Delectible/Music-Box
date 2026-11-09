@@ -95,6 +95,10 @@
 38. Navigation buttons hide themselves (immersive). (0.3.1: Settings >
    Full screen: hide navigation buttons (default) / navigation and status
    bar / always shown; a swipe from the edge shows them for a moment.)
+39. YouTube downloads stuck at 0%. (0.3.2: the library re-asked YouTube
+   forever when a stream was refused; now Roadie tries the VR, Android and
+   TV app types in turn with time limits, downloads in 9 MB pieces, shows
+   which step it's on, and fails with a plain message if all refuse.)
 
 ## Ideas
 

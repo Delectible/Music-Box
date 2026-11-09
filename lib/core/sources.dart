@@ -668,47 +668,91 @@ class YouTube extends MusicSource {
     return out;
   }
 
-  /// The audio stream to download or preview: AAC in MP4 when there is one.
-  static Future<yt.AudioOnlyStreamInfo> audio(String videoId) async {
-    final m = await client.videos.streamsClient.getManifest(videoId);
-    final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
-    if (mp4.isNotEmpty) return mp4.withHighestBitrate();
-    throw UnsupportedLink('This video has no downloadable audio');
+  /// YouTube app types to ask for the stream, in order. The VR app works
+  /// without the extra tokens YouTube now wants from the others.
+  static const _clients = [
+    ('VR app', yt.YoutubeApiClient.androidVr),
+    ('Android app', yt.YoutubeApiClient.androidSdkless),
+    ('TV app', yt.YoutubeApiClient.tv),
+  ];
+
+  /// The audio stream to download or preview (AAC in MP4), trying each app
+  /// type in turn; [status] hears which one.
+  static Future<yt.AudioOnlyStreamInfo> audio(String videoId, {void Function(String)? status}) async {
+    Object? last;
+    for (var i = 0; i < _clients.length; i++) {
+      final (name, api) = _clients[i];
+      status?.call('Finding the audio (${i + 1}/${_clients.length}: $name)…');
+      try {
+        final m = await client.videos.streamsClient
+            .getManifest(videoId, ytClients: [api])
+            .timeout(const Duration(seconds: 40));
+        final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
+        if (mp4.isNotEmpty) return mp4.withHighestBitrate();
+        last = UnsupportedLink('This video has no downloadable audio');
+      } on Object catch (e) {
+        last = e;
+      }
+    }
+    throw last ?? UnsupportedLink('YouTube didn\'t offer this video\'s audio');
   }
 
   static Future<Uri> previewUrl(String videoId) async => (await audio(videoId)).url;
 
-  /// Saves the video's audio to [file] (via a .part file).
+  /// Saves the video's audio to [file] (via a .part file), in ~9 MB pieces
+  /// (YouTube slows down single big requests to a crawl). If YouTube refuses
+  /// a stream, the next app type is tried.
   static Future<void> download(
     String videoId,
     File file, {
     void Function(double)? progress,
+    void Function(String)? status,
     bool Function()? cancelled,
   }) async {
-    final info = await audio(videoId);
-    final total = info.size.totalBytes;
     final part = File('${file.path}.part');
     await part.parent.create(recursive: true);
-    final sink = part.openWrite();
-    var got = 0;
-    final head = <int>[];
-    try {
-      await for (final c in client.videos.streamsClient.get(info)) {
-        if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
-        if (head.length < 64) head.addAll(c.take(64 - head.length));
-        sink.add(c);
-        got += c.length;
-        progress?.call(total > 0 ? got / total : -1);
+    Object? last;
+    for (var attempt = 0; attempt < _clients.length; attempt++) {
+      // Each attempt asks a different app type first.
+      final (name, api) = _clients[attempt];
+      status?.call('Finding the audio (${attempt + 1}/${_clients.length}: $name)…');
+      yt.AudioOnlyStreamInfo info;
+      try {
+        final m = await YouTube.client.videos.streamsClient
+            .getManifest(videoId, ytClients: [api])
+            .timeout(const Duration(seconds: 40));
+        final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
+        if (mp4.isEmpty) {
+          last = UnsupportedLink('This video has no downloadable audio');
+          continue;
+        }
+        info = mp4.withHighestBitrate();
+      } on Object catch (e) {
+        last = e;
+        continue;
       }
-      await sink.close();
-      if (!looksLikeAudio(head, 'audio/mp4')) throw NotMusicFile('not audio');
-      if (await file.exists()) await file.delete();
-      await part.rename(file.path);
-    } catch (_) {
-      await sink.close();
-      if (await part.exists()) await part.delete();
-      rethrow;
+      try {
+        status?.call('');
+        await Http.downloadPieces(
+          info.url,
+          part,
+          info.size.totalBytes,
+          rangeInQuery: info.url.queryParameters['c'] != 'ANDROID',
+          progress: progress,
+          cancelled: cancelled,
+        );
+        final head = await part.openRead(0, 64).fold<List<int>>([], (a, b) => a..addAll(b));
+        if (!looksLikeAudio(head, 'audio/mp4')) throw NotMusicFile('not audio');
+        if (await file.exists()) await file.delete();
+        await part.rename(file.path);
+        return;
+      } on HttpFailure catch (e) {
+        if (e.message == 'Cancelled') rethrow;
+        last = e; // refused (403) or cut off: next app type
+        if (await part.exists()) await part.delete();
+      }
     }
+    throw last ?? UnsupportedLink('YouTube didn\'t offer this video\'s audio');
   }
 }
 

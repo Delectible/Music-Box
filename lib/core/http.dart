@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'app_info.dart';
@@ -129,6 +130,42 @@ class Http {
       kind = LinkKind.other;
     }
     return LinkInfo(kind, type, name == null ? null : Uri.decodeComponent(name));
+  }
+
+  /// Downloads [total] bytes of [url] into [file] in pieces (Range header,
+  /// or YouTube's "range" query parameter), with a time limit on each piece.
+  static Future<void> downloadPieces(
+    Uri url,
+    File file,
+    int total, {
+    bool rangeInQuery = false,
+    void Function(double)? progress,
+    bool Function()? cancelled,
+  }) async {
+    const piece = 9 * 1024 * 1024;
+    final sink = file.openWrite();
+    var got = 0;
+    try {
+      while (got < total) {
+        if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
+        final to = min(got + piece, total) - 1;
+        final u = rangeInQuery
+            ? url.replace(queryParameters: {...url.queryParameters, 'range': '$got-$to'})
+            : url;
+        final res = await _get(u, headers: rangeInQuery ? null : {'Range': 'bytes=$got-$to'});
+        var n = 0;
+        await for (final c in res.timeout(const Duration(seconds: 30))) {
+          if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
+          sink.add(c);
+          n += c.length;
+          got += c.length;
+          progress?.call(got / total);
+        }
+        if (n == 0) throw HttpFailure('YouTube sent nothing');
+      }
+    } finally {
+      await sink.close();
+    }
   }
 
   static Future<Object?> json(Uri uri) async {
