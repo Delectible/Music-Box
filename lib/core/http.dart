@@ -65,7 +65,8 @@ String friendlyError(Object e) {
     return 'YouTube is limiting requests right now. Try again in a few minutes';
   }
   if (s.contains('VideoUnplayable') || s.contains('VideoUnavailable')) {
-    return 'This video can\'t be played (private, age-restricted or removed)';
+    final why = RegExp(r'Reason:\s*(.+)').firstMatch(s)?.group(1)?.trim();
+    return 'YouTube won\'t play this here${why == null || why.isEmpty ? '' : ': $why'}';
   }
   if (e is NotMusicFile) return 'That link isn\'t a music file (${e.what})';
   if (e is FileSystemException) return 'Couldn\'t save the file (${e.osError?.message ?? e.message})';

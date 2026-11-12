@@ -99,6 +99,12 @@
    forever when a stream was refused; now Roadie tries the VR, Android and
    TV app types in turn with time limits, downloads in 9 MB pieces, shows
    which step it's on, and fails with a plain message if all refuse.)
+40. YouTube: "private, age restricted or removed" on normal videos. (0.3.3:
+   that text was a guess; now YouTube's own reason is shown. YouTube's
+   stream challenges are solved with yt-dlp's solver (hash-checked)
+   running in a hidden WebView, which opens the web player and TV clients;
+   VR, web, TV, Android and mobile web are tried in turn; each refusal is
+   logged in Problem reports.)
 
 ## Ideas
 

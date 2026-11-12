@@ -39,6 +39,9 @@ then `flutter pub get`.
   sites (`CustomSite`); a script lists audio links / <audio> / og:audio on
   each page, taps on audio files are caught; found files open as a
   `PageSource` item (same preview / download screen).
+- `lib/core/yt_solver.dart` + `JsRunner.kt`: YouTube stream challenges
+  (yt-dlp's EJS solver, via youtube_explode's solver hook) in a hidden
+  WebView.
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
 - `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain

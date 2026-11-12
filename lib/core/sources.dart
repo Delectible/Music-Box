@@ -5,7 +5,9 @@ import 'dart:math';
 import 'package:xml/xml.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 
+import 'crash_log.dart';
 import 'http.dart';
+import 'yt_solver.dart';
 
 /// Something to download from: an album / collection, or a single track.
 class RemoteItem {
@@ -554,7 +556,7 @@ class PageSource extends MusicSource {
 /// best AAC (M4A) audio stream; tags from the title ("Artist - Title") and
 /// channel, cover from the thumbnail, then MusicBrainz.
 class YouTube extends MusicSource {
-  static final client = yt.YoutubeExplode();
+  static final client = yt.YoutubeExplode(jsSolver: WebViewSolver());
 
   @override
   String get id => 'youtube';
@@ -672,9 +674,18 @@ class YouTube extends MusicSource {
   /// without the extra tokens YouTube now wants from the others.
   static const _clients = [
     ('VR app', yt.YoutubeApiClient.androidVr),
-    ('Android app', yt.YoutubeApiClient.androidSdkless),
+    ('web player', yt.YoutubeApiClient.safari),
     ('TV app', yt.YoutubeApiClient.tv),
+    ('Android app', yt.YoutubeApiClient.androidSdkless),
+    ('mobile web', yt.YoutubeApiClient.mweb),
   ];
+
+  /// YouTube's own reason, from its exception text ("Reason: ...").
+  static String reason(Object e) {
+    final t = '$e';
+    final m = RegExp(r'Reason:\s*(.+)').firstMatch(t);
+    return (m?.group(1) ?? t.split('\n').first).trim();
+  }
 
   /// The audio stream to download or preview (AAC in MP4), trying each app
   /// type in turn; [status] hears which one.
@@ -692,9 +703,13 @@ class YouTube extends MusicSource {
         last = UnsupportedLink('This video has no downloadable audio');
       } on Object catch (e) {
         last = e;
+        CrashLog.note('YouTube $videoId via $name: ${reason(e)}');
       }
     }
-    throw last ?? UnsupportedLink('YouTube didn\'t offer this video\'s audio');
+    throw UnsupportedLink(
+      'YouTube refused every way of getting this video'
+      '${last == null ? '' : ' (last: ${reason(last)})'}.',
+    );
   }
 
   static Future<Uri> previewUrl(String videoId) async => (await audio(videoId)).url;
@@ -729,6 +744,7 @@ class YouTube extends MusicSource {
         info = mp4.withHighestBitrate();
       } on Object catch (e) {
         last = e;
+        CrashLog.note('YouTube $videoId via $name: ${reason(e)}');
         continue;
       }
       try {
@@ -749,10 +765,14 @@ class YouTube extends MusicSource {
       } on HttpFailure catch (e) {
         if (e.message == 'Cancelled') rethrow;
         last = e; // refused (403) or cut off: next app type
+        CrashLog.note('YouTube $videoId via $name: download $e');
         if (await part.exists()) await part.delete();
       }
     }
-    throw last ?? UnsupportedLink('YouTube didn\'t offer this video\'s audio');
+    throw UnsupportedLink(
+      'YouTube refused every way of getting this video'
+      '${last == null ? '' : ' (last: ${reason(last)})'}. Details are in Problem reports.',
+    );
   }
 }
 

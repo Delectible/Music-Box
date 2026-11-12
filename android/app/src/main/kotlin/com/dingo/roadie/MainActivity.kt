@@ -40,6 +40,7 @@ class MainActivity : AudioServiceActivity() {
     private var pendingRecord: MethodChannel.Result? = null
     private var pendingStorage: MethodChannel.Result? = null
     private val viz = VizStream()
+    private val js by lazy { JsRunner(this) }
 
     /** Native crashes go to a file the app shows under Settings > Problem reports. */
     private fun catchCrashes() {
@@ -158,6 +159,8 @@ class MainActivity : AudioServiceActivity() {
                         true
                     }
                 }
+                "jsInit" -> js.init(call.argument<String>("script") ?: "", result)
+                "jsEval" -> js.eval(call.argument<String>("code") ?: "null", result)
                 "immersive" -> {
                     immersive = call.argument<Number>("mode")?.toInt() ?: 1
                     applyImmersive()
@@ -240,6 +243,7 @@ class MainActivity : AudioServiceActivity() {
 
     override fun onDestroy() {
         viz.stop()
+        js.dispose()
         super.onDestroy()
     }
 
