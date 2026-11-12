@@ -13,7 +13,9 @@ import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/core/lyrics.dart';
 import 'package:roadie/core/quality.dart';
+import 'package:roadie/screens/file_actions.dart';
 import 'package:roadie/screens/folders_screen.dart';
+import 'package:roadie/screens/sources_screen.dart';
 import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
@@ -350,6 +352,51 @@ void main() {
     await _settle(tester, 1500);
     expect(find.text('Coastline at 2am'), findsWidgets);
     await shot(tester, 'car_15_lyrics');
+    a.engine.close();
+  });
+
+  testWidgets('sources manager and tag editing', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({
+      'sourceOrder': ['youtube', 'archive', 'podcasts', 'link'],
+    });
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const SourcesScreen())));
+    await _settle(tester);
+    expect(find.text('YouTube'), findsOneWidget);
+    await shot(tester, 'car_16_sources');
+    // Removed built-ins can be added back.
+    await tester.tap(find.text('Add a source'));
+    await _settle(tester);
+    expect(find.text('Add back Jamendo'), findsOneWidget);
+    await tester.tap(find.text('Add back Jamendo'));
+    await _settle(tester);
+    expect(a.settings.sourceOrder.last, 'jamendo');
+    // Remove one.
+    await tester.tap(find.byTooltip('Remove').first);
+    await _settle(tester);
+    expect(a.settings.sourceOrder.contains('youtube'), isFalse);
+    nav.pop();
+    await _settle(tester);
+    // Bulk tag editing for an album (reading tags answers "nothing extra").
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('roadie/library'),
+      (call) async => call.method == 'readTags' ? <String, Object?>{} : null,
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('roadie/library'),
+        null,
+      ),
+    );
+    final album = a.library.albums[0];
+    final ctx = tester.element(find.byType(Scaffold).first);
+    unawaited(editTags(ctx, album.songs, what: album.title));
+    await _settle(tester);
+    expect(find.text('Edit tags · 6 songs'), findsOneWidget);
+    await shot(tester, 'car_17_edit_tags');
     a.engine.close();
   });
 }

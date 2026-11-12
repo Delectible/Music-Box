@@ -106,6 +106,16 @@
    VR, web, TV, Android and mobile web are tried in turn; each refusal is
    logged in Problem reports. Builds now pin Flutter 3.47.9: a new
    stable release broke the build.)
+41. Download toast: 5 s and a close button; "Show" crashed after leaving
+   the album page. (0.3.4: all toasts have a close button; fixed.)
+42. YouTube "web player: No host specified in URI". (0.3.4: the library
+   passed the solver a player address without the host; fixed, web
+   player tried first, web / TV get 90 s.)
+43. Manage download sources: reorder, remove all, add built-ins back, add
+   sites by link, each one's settings. (0.3.4: Get music > Sources.)
+44. Delete a song or album from the device (⋮, with confirmation). (0.3.4)
+45. Edit tags for a song, or in bulk for an album / playlist / any group:
+   title, artist, album, album artist, genre, year, track, disc. (0.3.4)
 
 ## Ideas
 

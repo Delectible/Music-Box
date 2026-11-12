@@ -37,6 +37,7 @@ ThemeData buildTheme(Brightness b, Color accent, {bool black = false}) {
       builders: {TargetPlatform.android: FadeForwardsPageTransitionsBuilder()},
     ),
     listTileTheme: const ListTileThemeData(minVerticalPadding: 10),
+    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating, showCloseIcon: true),
     dividerTheme: DividerThemeData(color: scheme.onSurface.withValues(alpha: 0.08), space: 1),
   );
 }

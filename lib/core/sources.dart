@@ -77,11 +77,18 @@ abstract class MusicSource {
   Future<List<RemoteTrack>> tracks(RemoteItem item);
 }
 
-/// Every built-in source. [jamendoKey] and [lossless] come from Settings.
-List<MusicSource> allSources({required String jamendoKey, required bool lossless}) => [
-  InternetArchive(lossless: lossless),
-  Jamendo(jamendoKey, lossless: lossless),
-  CcMixter(lossless: lossless),
+/// Built-in source ids, in the default order.
+const builtInSources = ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link'];
+
+/// Sources that can download lossless (FLAC) when it's there.
+const losslessSources = {'archive', 'jamendo', 'ccmixter'};
+
+/// Every built-in source. [jamendoKey] and [lossless] (per source id) come
+/// from Settings.
+List<MusicSource> allSources({required String jamendoKey, required bool Function(String id) lossless}) => [
+  InternetArchive(lossless: lossless('archive')),
+  Jamendo(jamendoKey, lossless: lossless('jamendo')),
+  CcMixter(lossless: lossless('ccmixter')),
   YouTube(),
   Podcasts(),
   DirectLink(),
@@ -673,12 +680,17 @@ class YouTube extends MusicSource {
   /// YouTube app types to ask for the stream, in order. The VR app works
   /// without the extra tokens YouTube now wants from the others.
   static const _clients = [
-    ('VR app', yt.YoutubeApiClient.androidVr),
     ('web player', yt.YoutubeApiClient.safari),
+    ('VR app', yt.YoutubeApiClient.androidVr),
     ('TV app', yt.YoutubeApiClient.tv),
-    ('Android app', yt.YoutubeApiClient.androidSdkless),
     ('mobile web', yt.YoutubeApiClient.mweb),
+    ('Android app', yt.YoutubeApiClient.androidSdkless),
   ];
+
+  /// Web types solve YouTube's challenge first (the first time fetches its
+  /// player script): give them longer.
+  static Duration _limit(String name) =>
+      name.contains('web') || name.contains('TV') ? const Duration(seconds: 90) : const Duration(seconds: 40);
 
   /// YouTube's own reason, from its exception text ("Reason: ...").
   static String reason(Object e) {
@@ -697,7 +709,7 @@ class YouTube extends MusicSource {
       try {
         final m = await client.videos.streamsClient
             .getManifest(videoId, ytClients: [api])
-            .timeout(const Duration(seconds: 40));
+            .timeout(_limit(name));
         final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
         if (mp4.isNotEmpty) return mp4.withHighestBitrate();
         last = UnsupportedLink('This video has no downloadable audio');
@@ -735,7 +747,7 @@ class YouTube extends MusicSource {
       try {
         final m = await YouTube.client.videos.streamsClient
             .getManifest(videoId, ytClients: [api])
-            .timeout(const Duration(seconds: 40));
+            .timeout(_limit(name));
         final mp4 = m.audioOnly.where((s) => s.container == yt.StreamContainer.mp4);
         if (mp4.isEmpty) {
           last = UnsupportedLink('This video has no downloadable audio');

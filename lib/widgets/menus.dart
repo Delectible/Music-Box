@@ -4,6 +4,7 @@ import '../core/models.dart';
 import '../core/scope.dart';
 import '../screens/collection_screen.dart';
 import '../screens/podcast_screen.dart';
+import '../screens/file_actions.dart';
 import '../screens/fix_tags_sheet.dart';
 import '../screens/song_info_screen.dart';
 import 'art.dart';
@@ -76,7 +77,17 @@ Future<void> showSongMenu(BuildContext context, Song song) {
           () => scope.player.markPlayed(song.id, !scope.player.isPlayed(song.id)),
         ),
       (Icons.info_outline_rounded, 'Song info', () => openSongInfo(context, song)),
+      (
+        Icons.edit_rounded,
+        'Edit tags…',
+        () => editTags(context, [song], what: '${song.title} · ${song.artist}'),
+      ),
       (Icons.auto_fix_high_rounded, 'Fix tags…', () => showFixTags(context, song)),
+      (
+        Icons.delete_outline_rounded,
+        'Delete from device…',
+        () => deleteSongs(context, [song], what: '"${song.title}"'),
+      ),
     ],
   );
 }
@@ -112,7 +123,16 @@ Future<void> showCollectionMenu(BuildContext context, Collection c) {
       ),
       if (c.kind != CollectionKind.playlist)
         (Icons.playlist_add_rounded, 'Add to playlist…', () => addToPlaylist(context, c.songs)),
+      (Icons.edit_rounded, 'Edit tags…', () => editTags(context, c.songs, what: c.title)),
       (Icons.auto_fix_high_rounded, 'Fix tags', () => fixTagsFor(context, c.songs, onlyIncomplete: false)),
+      if (c.kind == CollectionKind.album ||
+          c.kind == CollectionKind.folder ||
+          c.kind == CollectionKind.podcast)
+        (
+          Icons.delete_outline_rounded,
+          c.kind == CollectionKind.album ? 'Delete album from device…' : 'Delete from device…',
+          () => deleteSongs(context, c.songs, what: '"${c.title}" (${c.songs.length} songs)'),
+        ),
       if (playlist != null && playlist.id != 'fav') ...[
         (
           Icons.edit_rounded,

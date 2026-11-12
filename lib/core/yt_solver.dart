@@ -4,6 +4,7 @@
 import 'package:flutter/services.dart';
 import 'package:youtube_explode_dart/src/reverse_engineering/challenges/ejs/base_ejs_solver.dart';
 import 'package:youtube_explode_dart/src/reverse_engineering/challenges/ejs/ejs.dart';
+import 'package:youtube_explode_dart/src/reverse_engineering/challenges/js_challenge.dart';
 
 /// Solves YouTube's stream challenges (yt-dlp's solver, fetched from its
 /// GitHub releases and checked against a known hash) in Android's WebView,
@@ -20,6 +21,18 @@ class WebViewSolver extends BaseEJSSolver {
       throw Exception('The YouTube solver didn\'t start');
     }
   }();
+
+  /// The library sometimes hands over the player address without the host
+  /// ("/s/player/…/base.js"), which can't be fetched.
+  static String absolute(String url) {
+    if (url.startsWith('//')) return 'https:$url';
+    if (url.startsWith('/')) return 'https://www.youtube.com$url';
+    return url;
+  }
+
+  @override
+  Future<Map<String, String?>> solveBulk(String playerUrl, Map<JSChallengeType, List<String>> requests) =>
+      super.solveBulk(absolute(playerUrl), requests);
 
   @override
   Future<String> executeJavaScript(String jsCode) async {

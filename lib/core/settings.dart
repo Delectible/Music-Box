@@ -211,6 +211,21 @@ class Settings extends ChangeNotifier {
   bool get preferLossless => _p.getBool('preferLossless') ?? true;
   set preferLossless(bool v) => _set('preferLossless', v);
 
+  /// The sources shown in Get music, in order (built-in and site ids).
+  /// Removed ones aren't listed; sites added later go on the end.
+  List<String> get sourceOrder {
+    final saved = _p.getStringList('sourceOrder');
+    if (saved != null) return saved;
+    final sites = (RegExp(r'"id":"([^"]+)"').allMatches(customSitesJson)).map((m) => m.group(1)!);
+    return ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link', ...sites];
+  }
+
+  set sourceOrder(List<String> v) => _set('sourceOrder', v);
+
+  /// Lossless (FLAC) when a source has it, per source.
+  bool losslessFor(String id) => _p.getBool('lossless.$id') ?? preferLossless;
+  void setLossless(String id, bool v) => _set('lossless.$id', v);
+
   /// Sources ticked in Get music (built-in ids and custom site ids).
   List<String> get sources => _p.getStringList('sources') ?? const ['archive'];
   set sources(List<String> v) => _set('sources', v);

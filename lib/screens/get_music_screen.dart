@@ -11,10 +11,13 @@ import '../core/sources.dart';
 import '../core/tag_fixer.dart';
 import 'browser_screen.dart';
 import 'folders_screen.dart';
+import 'sources_screen.dart';
 
 List<MusicSource> _sources(BuildContext context) {
   final s = AppScope.of(context).settings;
-  return allSources(jamendoKey: s.jamendoKey, lossless: s.preferLossless);
+  final all = allSources(jamendoKey: s.jamendoKey, lossless: s.losslessFor);
+  final order = s.sourceOrder;
+  return [for (final id in order) ...all.where((x) => x.id == id)];
 }
 
 /// One source's part of a search.
@@ -43,7 +46,7 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
   List<String> _ticked(List<MusicSource> builtIn, List<CustomSite> sites) {
     final ids = {...builtIn.map((x) => x.id), ...sites.map((x) => x.id)};
     final t = AppScope.of(context).settings.sources.where(ids.contains).toList();
-    return t.isEmpty ? [builtIn.first.id] : t;
+    return t.isEmpty ? [builtIn.isNotEmpty ? builtIn.first.id : sites.first.id] : t;
   }
 
   void _toggle(String id, List<String> ticked) {
@@ -150,7 +153,24 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
       listenable: s,
       builder: (context, _) {
         final sources = _sources(context);
-        final sites = CustomSite.decode(s.customSitesJson);
+        final allSites = CustomSite.decode(s.customSitesJson);
+        final sites = [for (final id in s.sourceOrder) ...allSites.where((x) => x.id == id)];
+        if (sources.isEmpty && sites.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('No download sources'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => openSources(context),
+                  icon: const Icon(Icons.tune_rounded),
+                  label: const Text('Choose sources'),
+                ),
+              ],
+            ),
+          );
+        }
         final ticked = _ticked(sources, sites);
         final link = ticked.contains('link');
         final names = [
@@ -184,7 +204,7 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                             Padding(
                               padding: const EdgeInsets.all(4),
                               child: GestureDetector(
-                                onLongPress: () => _editSite(context, x),
+                                onLongPress: () => editSite(context, x),
                                 child: FilterChip(
                                   padding: const EdgeInsets.all(8),
                                   avatar: const Icon(Icons.public_rounded, size: 18),
@@ -198,9 +218,9 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                             padding: const EdgeInsets.all(4),
                             child: ActionChip(
                               padding: const EdgeInsets.all(8),
-                              avatar: const Icon(Icons.add_rounded),
-                              label: const Text('Add a site', style: TextStyle(fontSize: 16)),
-                              onPressed: () => _editSite(context, null),
+                              avatar: const Icon(Icons.tune_rounded),
+                              label: const Text('Sources', style: TextStyle(fontSize: 16)),
+                              onPressed: () => openSources(context),
                             ),
                           ),
                         ],
@@ -399,86 +419,6 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
       },
     );
   }
-
-  /// Add (site == null) or edit a website source.
-  Future<void> _editSite(BuildContext context, CustomSite? site) async {
-    final s = AppScope.of(context).settings;
-    final name = TextEditingController(text: site?.name ?? '');
-    final home = TextEditingController(text: site?.home ?? 'https://');
-    final search = TextEditingController(text: site?.search ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(site == null ? 'Add a site' : 'Edit ${site.name}'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: home,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(labelText: 'Home page', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: search,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Search address (optional)',
-                    hintText: 'https://example.org/search?q={q}',
-                    helperText:
-                        'Where {q} is, your search words go. Or set it later from the browser\'s menu.',
-                    helperMaxLines: 3,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          if (site != null)
-            TextButton(onPressed: () => Navigator.of(context).pop('delete'), child: const Text('Remove')),
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop('save'), child: const Text('Save')),
-        ],
-      ),
-    );
-    final sites = CustomSite.decode(s.customSitesJson);
-    if (result == 'delete' && site != null) {
-      s.customSitesJson = CustomSite.encode(sites.where((x) => x.id != site.id).toList());
-      s.sources = s.sources.where((x) => x != site.id).toList();
-    } else if (result == 'save') {
-      var url = home.text.trim();
-      if (!url.startsWith('http')) url = 'https://$url';
-      final u = Uri.tryParse(url);
-      if (u != null && u.host.isNotEmpty) {
-        final n = name.text.trim().isEmpty ? u.host : name.text.trim();
-        var q = search.text.trim();
-        if (q.isNotEmpty && !q.startsWith('http')) q = 'https://$q';
-        final next = CustomSite(
-          id: site?.id ?? 'site-${DateTime.now().millisecondsSinceEpoch}',
-          name: n,
-          home: url,
-          search: q,
-        );
-        s.customSitesJson = CustomSite.encode(
-          site == null ? [...sites, next] : [for (final x in sites) x.id == site.id ? next : x],
-        );
-        if (site == null) s.sources = [...s.sources.where((x) => x != 'link'), next.id];
-      }
-    }
-    name.dispose();
-    home.dispose();
-    search.dispose();
-  }
 }
 
 Future<void> openRemoteItem(BuildContext context, MusicSource source, RemoteItem item) =>
@@ -617,6 +557,8 @@ class _ItemScreenState extends State<_ItemScreen> {
     if (t == null || _picked.isEmpty) return;
     final scope = AppScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    // The app's navigator: this page may be closed by the time "Show" is tapped.
+    final nav = Navigator.of(context, rootNavigator: true);
     if (!await TagFixer.ensureWrite()) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Roadie needs access to your files to save downloads')),
@@ -638,8 +580,12 @@ class _ItemScreenState extends State<_ItemScreen> {
     final folder = await scope.downloads.folder();
     messenger.showSnackBar(
       SnackBar(
+        duration: const Duration(seconds: 5),
         content: Text('Downloading ${list.length} ${list.length == 1 ? 'song' : 'songs'} to $folder'),
-        action: SnackBarAction(label: 'Show', onPressed: () => openDownloads(context)),
+        action: SnackBarAction(
+          label: 'Show',
+          onPressed: () => nav.push(MaterialPageRoute<void>(builder: (_) => const _DownloadsScreen())),
+        ),
       ),
     );
   }
@@ -1043,12 +989,11 @@ class DownloadOptions extends StatelessWidget {
             value: s.lookUpDownloads,
             onChanged: (v) => s.lookUpDownloads = v,
           ),
-          SwitchListTile(
-            secondary: const Icon(Icons.high_quality_rounded),
-            title: const Text('Prefer lossless (FLAC)'),
-            subtitle: const Text('Bigger files; MP3 when a source has no FLAC'),
-            value: s.preferLossless,
-            onChanged: (v) => s.preferLossless = v,
+          ListTile(
+            leading: const Icon(Icons.tune_rounded),
+            title: const Text('Download sources'),
+            subtitle: const Text('Reorder, remove or add sources, and each one\'s settings'),
+            onTap: () => openSources(context),
           ),
           if (s.jamendoKey.isNotEmpty)
             ListTile(
