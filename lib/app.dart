@@ -49,7 +49,8 @@ class _RoadieAppState extends State<RoadieApp> {
       _toldSlow = true;
       _messenger.currentState?.showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 8),
+          persist: false,
+          duration: const Duration(seconds: 4),
           content: Text(
             'The connection looks slow. Download 2 at a time instead of ${widget.settings.downloadThreads}?',
           ),
@@ -69,7 +70,8 @@ class _RoadieAppState extends State<RoadieApp> {
     final bad = r.failed.length;
     _messenger.currentState?.showSnackBar(
       SnackBar(
-        duration: const Duration(seconds: 6),
+        persist: false,
+        duration: const Duration(seconds: 4),
         content: Text(
           'Downloads finished: ${r.saved.length + r.already.length} of ${r.total} saved'
           '${r.close.isNotEmpty ? ' · ${r.close.length} close matches to check' : ''}'

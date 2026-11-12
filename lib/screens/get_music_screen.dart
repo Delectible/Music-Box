@@ -90,6 +90,7 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
         if (!mounted) return;
         messenger.showSnackBar(
           const SnackBar(
+            persist: false,
             content: Text('That\'s a web page, not a music file. Looking for music files on it…'),
           ),
         );
@@ -589,7 +590,8 @@ class _ItemScreenState extends State<_ItemScreen> {
     final folder = await scope.downloads.folder();
     messenger.showSnackBar(
       SnackBar(
-        duration: const Duration(seconds: 5),
+        persist: false,
+        duration: const Duration(seconds: 4),
         content: Text('Downloading ${list.length} ${list.length == 1 ? 'song' : 'songs'} to $folder'),
         action: SnackBarAction(
           label: 'Show',

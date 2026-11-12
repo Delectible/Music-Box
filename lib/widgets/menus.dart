@@ -19,7 +19,7 @@ void openCollection(BuildContext context, Collection c) => Navigator.of(context)
 void _toast(BuildContext context, String text) => ScaffoldMessenger.of(context)
   ..hideCurrentSnackBar()
   ..showSnackBar(
-    SnackBar(content: Text(text), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2)),
+    SnackBar(content: Text(text), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 4)),
   );
 
 Future<void> showSongMenu(BuildContext context, Song song) {

@@ -161,6 +161,9 @@
    then Downloading (running, then the queue), Didn't work (Try all
    again), Done (Clear). "Clear finished" keeps close matches waiting on
    a decision. (0.3.8)
+56. Close matches: Allow / Disallow (and all) stop that song's preview.
+   Messages at the bottom go away after 4 s, also those with a button
+   (newer Flutter kept those up until tapped: `persist: false`). (0.3.9)
 
 ## Ideas
 

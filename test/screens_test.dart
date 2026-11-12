@@ -467,8 +467,11 @@ void main() {
       await _settle(tester);
       expect(find.text('You wanted'), findsWidgets);
       await shot(tester, size == car ? 'car_17_close_matches' : 'phone_close_matches');
+      // Its preview is playing: deciding ends it.
+      final pv = AppScope.of(ctx).preview..current = Uri.parse('https://soundcloud.com/a/b');
       await tester.tap(find.text('Disallow').first);
       await _settle(tester);
+      expect(pv.current, isNull);
       expect(jobs[0].state, JobState.failed);
       expect(jobs[0].error, 'Close match not kept');
       await tester.tap(find.text('Allow all'));

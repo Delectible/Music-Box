@@ -64,6 +64,7 @@ Future<void> deleteSongs(BuildContext context, List<Song> songs, {required Strin
   }
   messenger.showSnackBar(
     SnackBar(
+      persist: false,
       content: Text(
         n == songs.length
             ? 'Deleted ${plural(n, 'file')}'
@@ -180,6 +181,7 @@ class _EditTagsState extends State<_EditTags> {
     nav.pop();
     messenger.showSnackBar(
       SnackBar(
+        persist: false,
         content: Text(
           failed == 0
               ? 'Saved ${plural(widget.songs.length, 'song')}'

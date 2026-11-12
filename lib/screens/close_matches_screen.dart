@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/downloads.dart';
@@ -44,14 +46,20 @@ class _CloseMatchesScreenState extends State<CloseMatchesScreen> {
         final all = [
           TextButton.icon(
             style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: d.disallowAllClose,
+            onPressed: () {
+              unawaited(_preview.stop());
+              d.disallowAllClose();
+            },
             icon: const Icon(Icons.block_rounded),
             label: const Text('Disallow all'),
           ),
           const SizedBox(width: 8),
           FilledButton.tonalIcon(
             style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: d.allowAllClose,
+            onPressed: () {
+              unawaited(_preview.stop());
+              d.allowAllClose();
+            },
             icon: const Icon(Icons.check_rounded),
             label: const Text('Allow all'),
           ),
@@ -87,6 +95,11 @@ class _CloseMatchesScreenState extends State<CloseMatchesScreen> {
       },
     );
   }
+}
+
+/// A decision on a song ends its preview (the pair disappears with it).
+void _stop(Preview pv, Uri page) {
+  if (pv.current == page) unawaited(pv.stop());
 }
 
 String _len(Duration? d) {
@@ -148,13 +161,19 @@ class _Pair extends StatelessWidget {
     );
     final disallow = OutlinedButton.icon(
       style: OutlinedButton.styleFrom(minimumSize: const Size(0, 56)),
-      onPressed: () => downloads.disallowClose(job),
+      onPressed: () {
+        _stop(pv, f.page);
+        downloads.disallowClose(job);
+      },
       icon: const Icon(Icons.block_rounded),
       label: const Text('Disallow'),
     );
     final allow = FilledButton.icon(
       style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
-      onPressed: () => downloads.allowClose(job),
+      onPressed: () {
+        _stop(pv, f.page);
+        downloads.allowClose(job);
+      },
       icon: const Icon(Icons.check_rounded),
       label: const Text('Allow'),
     );
