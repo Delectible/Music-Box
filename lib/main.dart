@@ -12,6 +12,7 @@ import 'core/player.dart';
 import 'core/playlists.dart';
 import 'core/settings.dart';
 import 'core/source.dart';
+import 'core/ytdlp.dart';
 import 'screens/library_view.dart';
 
 void main() => CrashLog.guard(_start);
@@ -45,6 +46,19 @@ Future<void> _start() async {
     unawaited(engine.refreshSound());
   }
 
+  // SoundCloud's downloader: release line, healing, daily update check.
+  var scheduled = <Object>[];
+  void syncYtdlp() {
+    Ytdlp.channel = settings.ytdlpChannel;
+    Ytdlp.nightlyFallback = settings.ytdlpNightlyFallback;
+    final want = [settings.ytdlpAutoUpdate, settings.ytdlpChannel];
+    if (want.join() == scheduled.join()) return;
+    scheduled = want;
+    unawaited(Ytdlp.schedule(enabled: settings.ytdlpAutoUpdate));
+  }
+
+  settings.addListener(syncYtdlp);
+  syncYtdlp();
   settings.addListener(syncEngine);
   levelling.addListener(() => unawaited(engine.refreshSound()));
   syncEngine();

@@ -215,19 +215,52 @@ class Settings extends ChangeNotifier {
   /// Removed ones aren't listed; sites added later go on the end.
   List<String> get sourceOrder {
     final saved = _p.getStringList('sourceOrder');
-    if (saved != null) return saved;
     final sites = (RegExp(r'"id":"([^"]+)"').allMatches(customSitesJson)).map((m) => m.group(1)!);
-    return ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link', ...sites];
+    if (saved == null) {
+      return ['soundcloud', 'archive', 'podcasts', 'youtube', 'jamendo', 'ccmixter', 'link', ...sites];
+    }
+    // Sources added in a later version go first, once (they can be removed).
+    final known =
+        _p.getStringList('sourcesKnown') ??
+        const ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link'];
+    return [
+      for (final id in const ['soundcloud'])
+        if (!known.contains(id) && !saved.contains(id)) id,
+      ...saved,
+    ];
   }
 
-  set sourceOrder(List<String> v) => _set('sourceOrder', v);
+  set sourceOrder(List<String> v) {
+    _p.setStringList('sourcesKnown', const [
+      'soundcloud',
+      'archive',
+      'youtube',
+      'podcasts',
+      'jamendo',
+      'ccmixter',
+      'link',
+    ]);
+    _set('sourceOrder', v);
+  }
+
+  /// yt-dlp (SoundCloud's downloader): daily background update check, which
+  /// release line, and trying nightly when stable can't fix a failure.
+  bool get ytdlpAutoUpdate => _p.getBool('ytdlpAutoUpdate') ?? true;
+  set ytdlpAutoUpdate(bool v) => _set('ytdlpAutoUpdate', v);
+  String get ytdlpChannel => _p.getString('ytdlpChannel') ?? 'stable';
+  set ytdlpChannel(String v) => _set('ytdlpChannel', v);
+  bool get ytdlpNightlyFallback => _p.getBool('ytdlpNightlyFallback') ?? true;
+  set ytdlpNightlyFallback(bool v) => _set('ytdlpNightlyFallback', v);
+
+  /// "time|status" of the last update check (set by Ytdlp and the worker).
+  String get ytdlpLastCheck => _p.getString('ytdlpLastCheck') ?? '';
 
   /// Lossless (FLAC) when a source has it, per source.
   bool losslessFor(String id) => _p.getBool('lossless.$id') ?? preferLossless;
   void setLossless(String id, bool v) => _set('lossless.$id', v);
 
   /// Sources ticked in Get music (built-in ids and custom site ids).
-  List<String> get sources => _p.getStringList('sources') ?? const ['archive'];
+  List<String> get sources => _p.getStringList('sources') ?? const ['soundcloud'];
   set sources(List<String> v) => _set('sources', v);
 
   /// Websites the user added (JSON, see CustomSite).

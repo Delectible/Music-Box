@@ -366,6 +366,8 @@ void main() {
     unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const SourcesScreen())));
     await _settle(tester);
     expect(find.text('YouTube'), findsOneWidget);
+    // Added in a later version: SoundCloud goes first for people with a saved order.
+    expect(a.settings.sourceOrder.first, 'soundcloud');
     await shot(tester, 'car_16_sources');
     // Removed built-ins can be added back.
     await tester.tap(find.text('Add a source'));
@@ -377,7 +379,8 @@ void main() {
     // Remove one.
     await tester.tap(find.byTooltip('Remove').first);
     await _settle(tester);
-    expect(a.settings.sourceOrder.contains('youtube'), isFalse);
+    expect(a.settings.sourceOrder.contains('soundcloud'), isFalse);
+    expect(a.settings.sourceOrder.first, 'youtube'); // and it stays removed
     nav.pop();
     await _settle(tester);
     // Bulk tag editing for an album (reading tags answers "nothing extra").

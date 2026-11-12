@@ -42,6 +42,12 @@ then `flutter pub get`.
 - `lib/core/yt_solver.dart` + `JsRunner.kt`: YouTube stream challenges
   (yt-dlp's EJS solver, via youtube_explode's solver hook) in a hidden
   WebView.
+- `lib/core/ytdlp.dart` + `Ytdlp.kt`: bundled yt-dlp (youtubedl-android,
+  with Python and ffmpeg in the APK). Used by the SoundCloud source and the
+  download queue (`RemoteTrack.viaYtdlp`). It updates itself from yt-dlp's
+  releases: `UpdateWorker` daily (WorkManager), and `Ytdlp._healing`
+  updates and retries once when an error looks like a site change. When a
+  site breaks, the fix is usually just a yt-dlp release, no app change.
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
 - `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain

@@ -116,6 +116,12 @@
 44. Delete a song or album from the device (⋮, with confirmation). (0.3.4)
 45. Edit tags for a song, or in bulk for an album / playlist / any group:
    title, artist, album, album artist, genre, year, track, disc. (0.3.4)
+46. SoundCloud as the main source: search, track / set / artist links,
+   previews, the artist's original file when they allow downloads. Runs on
+   bundled yt-dlp, which updates itself: daily in the background (can be
+   turned off: Get music > Sources > SoundCloud) and straight away when a
+   failure looks like SoundCloud changed something (stable, then nightly).
+   (0.3.5)
 
 ## Ideas
 

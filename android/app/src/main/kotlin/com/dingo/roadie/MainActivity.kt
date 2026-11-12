@@ -84,6 +84,10 @@ class MainActivity : AudioServiceActivity() {
         super.configureFlutterEngine(flutterEngine)
         catchCrashes()
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/visualizer").setStreamHandler(viz)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp/progress").setStreamHandler(Ytdlp.progressHandler)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp").setMethodCallHandler { call, result ->
+            Ytdlp.handle(this, call, result)
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/library").setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasPermission" -> result.success(granted())

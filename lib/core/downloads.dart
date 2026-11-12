@@ -12,6 +12,7 @@ import 'playlists.dart';
 import 'settings.dart';
 import 'sources.dart';
 import 'tag_fixer.dart';
+import 'ytdlp.dart';
 
 enum JobState { queued, downloading, tagging, done, failed, skipped }
 
@@ -24,6 +25,7 @@ class _Batch {
 
 class DownloadJob {
   final RemoteTrack track;
+  late final String id = 'dl${identityHashCode(this)}';
   JobState state = JobState.queued;
   double progress = 0; // 0..1, -1 unknown size
   String? error;
@@ -87,6 +89,7 @@ class Downloads extends ChangeNotifier {
 
   void cancel(DownloadJob j) {
     j.cancelled = true;
+    if (j.track.viaYtdlp) unawaited(Ytdlp.cancel(j.id));
     if (j.state == JobState.queued) {
       j.state = JobState.failed;
       j.error = 'Cancelled';
@@ -142,10 +145,17 @@ class Downloads extends ChangeNotifier {
     return '$root/$artist/$album/$n$title.${t.ext}';
   }
 
+  static const _audioExts = ['mp3', 'm4a', 'flac', 'wav', 'opus', 'ogg', 'aiff', 'aif', 'aac'];
+
   Future<void> _run(DownloadJob j) async {
     final t = j.track;
     try {
-      final file = File(pathFor(await folder(), t));
+      var file = File(pathFor(await folder(), t));
+      // yt-dlp picks the file type: any type already there counts.
+      if (t.viaYtdlp) {
+        final base = file.path.substring(0, file.path.lastIndexOf('.'));
+        file = _audioExts.map((e) => File('$base.$e')).where((f) => f.existsSync()).firstOrNull ?? file;
+      }
       j.path = file.path;
       if (await file.exists()) {
         j.state = JobState.skipped;
@@ -160,6 +170,19 @@ class Downloads extends ChangeNotifier {
       const waits = [3, 8, 20, 45, 90];
       for (var attempt = 0; ; attempt++) {
         try {
+          if (t.viaYtdlp) {
+            file = await _ytdlpFetch(j, file, (p) {
+              j.progress = p;
+              j.note = null;
+              final now = DateTime.now();
+              if (now.difference(last).inMilliseconds > 250) {
+                last = now;
+                notifyListeners();
+              }
+            });
+            j.path = file.path;
+            break;
+          }
           final yt = t.youtubeId;
           final fetch = yt != null
               ? (({required void Function(double) progress}) => YouTube.download(
@@ -220,9 +243,46 @@ class Downloads extends ChangeNotifier {
       // A batch whose last song failed still becomes a playlist of the rest.
       if (_newFiles.isEmpty && !(_rescan?.isActive ?? false)) scheduleMicrotask(_makePlaylists);
       j.error = j.cancelled ? 'Cancelled' : friendlyError(e);
-      if (!j.cancelled) CrashLog.record(e, st, where: 'download ${t.url}');
+      if (!j.cancelled) {
+        CrashLog.record(e is YtdlpFailure ? '${e.message}\n${e.detail}' : e, st, where: 'download ${t.url}');
+      }
     }
     notifyListeners();
+  }
+
+  /// yt-dlp download (SoundCloud): the artist's file or the best full stream,
+  /// named like the rest; returns the file it saved.
+  Future<File> _ytdlpFetch(DownloadJob j, File planned, void Function(double) progress) async {
+    final base = planned.path.substring(0, planned.path.lastIndexOf('.'));
+    await Directory(planned.parent.path).create(recursive: true);
+    j.note = 'Starting…';
+    notifyListeners();
+    final r = await Ytdlp.download(
+      j.track.url.toString(),
+      [
+        '-f',
+        SoundCloud(original: settings.losslessFor('soundcloud')).format,
+        '-o',
+        '$base.%(ext)s',
+        '--no-playlist',
+        '--no-mtime',
+        '--no-simulate',
+        '--print',
+        'after_move:filepath',
+      ],
+      id: j.id,
+      progress: progress,
+    );
+    if (j.cancelled) throw HttpFailure('Cancelled');
+    final path = r.out.split('\n').map((l) => l.trim()).lastWhere((l) => l.startsWith('/'), orElse: () => '');
+    final file = File(path.isEmpty ? '$base.mp3' : path);
+    if (!file.existsSync()) throw YtdlpFailure('The download didn\'t produce a file', r.err);
+    final head = await file.openRead(0, 64).fold<List<int>>([], (a, b) => a..addAll(b));
+    if (!looksLikeAudio(head, '')) {
+      file.deleteSync();
+      throw NotMusicFile('not audio');
+    }
+    return file;
   }
 
   Future<void> _tag(String path, RemoteTrack t) async {

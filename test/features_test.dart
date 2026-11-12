@@ -19,6 +19,7 @@ import 'package:roadie/core/playlists.dart';
 import 'package:roadie/core/quality.dart';
 import 'package:roadie/core/smart.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/core/ytdlp.dart';
 import 'package:roadie/screens/podcast_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -347,5 +348,48 @@ void main() {
     final again = Player(SilentEngine(), prefs);
     expect(again.isPlayed(eps.first.id), isTrue);
     engine.close();
+  });
+
+  test('yt-dlp errors: what an update can fix, in plain words', () {
+    const clientId = 'ERROR: [soundcloud] Unable to extract client id; please report this issue';
+    expect(Ytdlp.looksBroken(clientId), isTrue);
+    expect(Ytdlp.looksBroken('ERROR: [soundcloud] 123: HTTP Error 404: Not Found'), isFalse);
+    expect(
+      Ytdlp.looksBroken('ERROR: <urlopen error [Errno 7] No address associated with hostname>'),
+      isFalse,
+    );
+    expect(
+      Ytdlp.friendly('ERROR: [soundcloud] 1: Requested format is not available'),
+      contains('30-second preview'),
+    );
+    expect(Ytdlp.friendly('ERROR: [soundcloud] 1: HTTP Error 404: Not Found'), contains('removed'));
+    expect(Ytdlp.friendly('ERROR: <urlopen error timed out>'), contains('internet'));
+  });
+
+  test('SoundCloud: tracks from yt-dlp details, never Go+ previews', () {
+    final sc = SoundCloud();
+    expect(sc.format, startsWith('download/'));
+    expect(sc.format, contains('[format_id!*=preview]'));
+    expect(SoundCloud(original: false).format.startsWith('download'), isFalse);
+    final t = sc.trackOf({
+      'title': 'Lumen Coast - Exit 42 (Official Audio)',
+      'uploader': 'nightlabel',
+      'webpage_url': 'https://soundcloud.com/nightlabel/exit-42',
+      'duration': 201.5,
+      'upload_date': '20240312',
+      'genre': 'Synthwave',
+      'thumbnails': [
+        {'id': 'large', 'url': 'https://i1.sndcdn.com/a-large.jpg', 'width': 100},
+        {'id': 't500x500', 'url': 'https://i1.sndcdn.com/a-t500x500.jpg', 'width': 500},
+      ],
+    });
+    expect(t.artist, 'Lumen Coast');
+    expect(t.title, startsWith('Exit 42'));
+    expect(t.year, '2024');
+    expect(t.genre, 'Synthwave');
+    expect(t.cover, contains('t500x500'));
+    expect(t.viaYtdlp, isTrue);
+    expect(SoundCloud.isLink(Uri.parse('https://on.soundcloud.com/abc')), isTrue);
+    expect(SoundCloud.isLink(Uri.parse('https://example.com/x')), isFalse);
   });
 }

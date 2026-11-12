@@ -8,6 +8,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 import 'crash_log.dart';
 import 'http.dart';
 import 'yt_solver.dart';
+import 'ytdlp.dart';
 
 /// Something to download from: an album / collection, or a single track.
 class RemoteItem {
@@ -46,6 +47,13 @@ class RemoteTrack {
   /// Look the song up on MusicBrainz for missing tags (not for podcasts).
   final bool lookUp;
 
+  /// Downloaded by yt-dlp (SoundCloud): [url] is the track's page, the
+  /// file type is decided at download time.
+  final bool viaYtdlp;
+
+  /// The real stream to preview, when [preview] / [url] is only a page.
+  final Future<Uri> Function()? resolvePreview;
+
   const RemoteTrack({
     required this.title,
     required this.url,
@@ -62,6 +70,8 @@ class RemoteTrack {
     this.preview,
     this.youtubeId,
     this.lookUp = true,
+    this.viaYtdlp = false,
+    this.resolvePreview,
   });
 
   Uri get previewUrl => preview ?? url;
@@ -78,7 +88,7 @@ abstract class MusicSource {
 }
 
 /// Built-in source ids, in the default order.
-const builtInSources = ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link'];
+const builtInSources = ['soundcloud', 'archive', 'podcasts', 'youtube', 'jamendo', 'ccmixter', 'link'];
 
 /// Sources that can download lossless (FLAC) when it's there.
 const losslessSources = {'archive', 'jamendo', 'ccmixter'};
@@ -86,6 +96,7 @@ const losslessSources = {'archive', 'jamendo', 'ccmixter'};
 /// Every built-in source. [jamendoKey] and [lossless] (per source id) come
 /// from Settings.
 List<MusicSource> allSources({required String jamendoKey, required bool Function(String id) lossless}) => [
+  SoundCloud(original: lossless('soundcloud')),
   InternetArchive(lossless: lossless('archive')),
   Jamendo(jamendoKey, lossless: lossless('jamendo')),
   CcMixter(lossless: lossless('ccmixter')),
@@ -406,6 +417,7 @@ class CcMixter extends MusicSource {
   @override
   Future<List<RemoteTrack>> tracks(RemoteItem item) async => switch (item.source) {
     'youtube' => YouTube().tracks(item),
+    'soundcloud' => SoundCloud().tracks(item),
     'podcasts' => Podcasts().tracks(item),
     _ => [item.data! as RemoteTrack],
   };
@@ -457,6 +469,7 @@ class DirectLink extends MusicSource {
     if (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http') || uri.host.isEmpty) return const [];
     // YouTube videos and playlists, and podcast feeds, have their own sources.
     if (isYouTube(uri)) return YouTube().fromUrl(uri);
+    if (SoundCloud.isLink(uri)) return SoundCloud().fromUrl(uri);
     String? served;
     final check = probe;
     if (check != null) {
@@ -602,6 +615,7 @@ class YouTube extends MusicSource {
       cover: v.thumbnails.highResUrl,
       quality: 'AAC',
       youtubeId: v.id.value,
+      resolvePreview: () => previewUrl(v.id.value),
     );
   }
 
@@ -900,5 +914,152 @@ class Podcasts extends MusicSource {
       );
     }
     return (show, author, cover, eps);
+  }
+}
+
+/// SoundCloud through yt-dlp: search, tracks, sets / albums and links.
+/// The artist's original file when they allow downloads, otherwise the
+/// best stream (never the 30-second Go+ previews).
+class SoundCloud extends MusicSource {
+  final bool original;
+  SoundCloud({this.original = true});
+
+  @override
+  String get id => 'soundcloud';
+  @override
+  String get name => 'SoundCloud';
+  @override
+  String get blurb => 'Millions of tracks, remixes and mixes, from the artists themselves';
+
+  static bool isLink(Uri u) {
+    final h = u.host.toLowerCase();
+    return h == 'soundcloud.com' || h.endsWith('.soundcloud.com') || h == 'snd.sc';
+  }
+
+  /// yt-dlp format choice: the artist's file, then MP3, then any full stream.
+  String get format => [
+    if (original) 'download',
+    'bestaudio[format_id!*=preview][ext=mp3]',
+    'bestaudio[format_id!*=preview][ext=m4a]',
+    'bestaudio[format_id!*=preview]',
+  ].join('/');
+
+  static String? _art(Map<String, Object?> e) {
+    final thumbs = (e['thumbnails'] as List? ?? const []).cast<Map<Object?, Object?>>();
+    final big =
+        thumbs.where((t) => '${t['id']}' == 't500x500').firstOrNull ??
+        (thumbs.isEmpty
+            ? null
+            : thumbs.reduce((a, b) => ((a['width'] as num?) ?? 0) >= ((b['width'] as num?) ?? 0) ? a : b));
+    return (big?['url'] ?? e['thumbnail']) as String?;
+  }
+
+  RemoteTrack trackOf(Map<String, Object?> e, {String album = '', int number = 0}) {
+    var artist = '${e['artist'] ?? e['uploader'] ?? ''}';
+    var title = '${e['track'] ?? e['title'] ?? ''}';
+    final dash = RegExp(r'^(.+?)\s+[-–—]\s+(.+)$').firstMatch(title);
+    if (dash != null && e['artist'] == null) {
+      artist = dash.group(1)!.trim();
+      title = dash.group(2)!.trim();
+    }
+    final date = '${e['upload_date'] ?? ''}';
+    final url = '${e['webpage_url'] ?? e['url'] ?? ''}';
+    final genres = e['genres'] is List ? (e['genres']! as List) : const [];
+    return RemoteTrack(
+      title: title,
+      artist: artist,
+      album: album,
+      albumArtist: album.isEmpty ? artist : '${e['album_artist'] ?? ''}',
+      year: '${e['release_year'] ?? (date.length >= 4 ? date.substring(0, 4) : '')}',
+      genre: '${e['genre'] ?? (genres.isEmpty ? '' : genres.first)}',
+      track: number,
+      url: Uri.parse(url),
+      ext: 'mp3',
+      length: _seconds(e['duration']),
+      cover: _art(e),
+      quality: original ? 'Original or MP3' : 'MP3',
+      viaYtdlp: true,
+      resolvePreview: () => streamUrl(url),
+    );
+  }
+
+  /// A playable stream for previews (MP3 or HLS).
+  static Future<Uri> streamUrl(String page) async {
+    final r = await Ytdlp.run(page, [
+      '-g',
+      '--no-playlist',
+      '-f',
+      'bestaudio[format_id!*=preview][ext=mp3]/bestaudio[format_id!*=preview]/bestaudio',
+    ]);
+    return Uri.parse(r.out.split('\n').firstWhere((l) => l.startsWith('http')));
+  }
+
+  @override
+  Future<List<RemoteItem>> search(String query) async {
+    final u = Uri.tryParse(query.trim());
+    if (u != null && u.hasScheme && isLink(u)) return fromUrl(u);
+    final j = Ytdlp.json(await Ytdlp.run('scsearch40:$query', ['-J', '--flat-playlist']));
+    final entries = (j['entries'] as List? ?? const []).cast<Map<Object?, Object?>>();
+    return [
+      for (final raw in entries)
+        if (raw['title'] != null)
+          () {
+            final e = raw.cast<String, Object?>();
+            final t = trackOf(e);
+            return RemoteItem(
+              source: id,
+              id: t.url.toString(),
+              title: '${e['title']}',
+              artist: '${e['uploader'] ?? ''}',
+              year: t.year,
+              cover: t.cover,
+              single: true,
+              data: t,
+            );
+          }(),
+    ];
+  }
+
+  /// A track, set / album, or artist page link.
+  Future<List<RemoteItem>> fromUrl(Uri u) async {
+    final j = Ytdlp.json(await Ytdlp.run(u.toString(), ['-J', '--flat-playlist', '--playlist-end', '300']));
+    if (j['_type'] == 'playlist') {
+      return [
+        RemoteItem(
+          source: id,
+          id: u.toString(),
+          title: '${j['title'] ?? 'SoundCloud playlist'}',
+          artist: '${j['uploader'] ?? ''}',
+          cover: _art(j),
+          data: u.toString(),
+        ),
+      ];
+    }
+    final t = trackOf(j);
+    return [
+      RemoteItem(
+        source: id,
+        id: u.toString(),
+        title: '${j['title'] ?? ''}',
+        artist: '${j['uploader'] ?? ''}',
+        year: t.year,
+        cover: t.cover,
+        single: true,
+        data: t,
+      ),
+    ];
+  }
+
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async {
+    if (item.single) return [item.data! as RemoteTrack];
+    // Full details for each track of the set (titles, lengths, covers).
+    final j = Ytdlp.json(await Ytdlp.run('${item.data}', ['-J', '--playlist-end', '300']));
+    final album = '${j['title'] ?? item.title}';
+    final entries = (j['entries'] as List? ?? const []).whereType<Map<Object?, Object?>>().toList();
+    return [
+      for (var i = 0; i < entries.length; i++)
+        trackOf(entries[i].cast<String, Object?>(), album: album, number: i + 1),
+    ];
   }
 }

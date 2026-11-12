@@ -748,10 +748,7 @@ class _TrackRow extends StatelessWidget {
               leading: IconButton.filledTonal(
                 iconSize: 30,
                 tooltip: on ? 'Stop preview' : 'Preview',
-                onPressed: () => pv.toggle(
-                  url,
-                  resolve: track.youtubeId == null ? null : () => YouTube.previewUrl(track.youtubeId!),
-                ),
+                onPressed: () => pv.toggle(url, resolve: track.resolvePreview),
                 icon: on && pv.loading
                     ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))
                     : Icon(on ? Icons.stop_rounded : Icons.play_arrow_rounded),

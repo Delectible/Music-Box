@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../core/scope.dart';
 import '../core/settings.dart';
 import '../core/sources.dart';
+import '../core/ytdlp.dart';
 
 void openSources(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SourcesScreen()));
 
 IconData sourceIcon(String id) => switch (id) {
+  'soundcloud' => Icons.cloud_rounded,
   'archive' => Icons.account_balance_rounded,
   'youtube' => Icons.smart_display_rounded,
   'podcasts' => Icons.podcasts_rounded,
@@ -156,6 +158,16 @@ class SourcesScreen extends StatelessWidget {
                   leading: Icon(sourceIcon(id)),
                   title: Text(name, style: Theme.of(sheet).textTheme.titleLarge),
                 ),
+                if (id == 'soundcloud') ...[
+                  SwitchListTile(
+                    secondary: const Icon(Icons.high_quality_rounded),
+                    title: const Text('The artist\'s original file when they allow it'),
+                    subtitle: const Text('Often WAV, FLAC or high-quality MP3; otherwise the best stream'),
+                    value: s.losslessFor(id),
+                    onChanged: (v) => s.setLossless(id, v),
+                  ),
+                  const YtdlpPanel(),
+                ],
                 if (losslessSources.contains(id))
                   SwitchListTile(
                     secondary: const Icon(Icons.high_quality_rounded),
@@ -311,4 +323,111 @@ Future<void> editSite(BuildContext context, CustomSite? site) async {
   name.dispose();
   home.dispose();
   search.dispose();
+}
+
+/// The downloader behind SoundCloud (yt-dlp): version, update now, the
+/// daily background check and which release line to follow.
+class YtdlpPanel extends StatefulWidget {
+  const YtdlpPanel({super.key});
+
+  @override
+  State<YtdlpPanel> createState() => _YtdlpPanelState();
+}
+
+class _YtdlpPanelState extends State<YtdlpPanel> {
+  late Future<String> _version = Ytdlp.version();
+  bool _checking = false;
+  String? _result;
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _result = null;
+    });
+    String r;
+    try {
+      final s = await Ytdlp.update();
+      r = s == 'DONE' ? 'Updated' : (s == 'ALREADY_UP_TO_DATE' ? 'Already up to date' : s);
+    } on Object catch (e) {
+      r = 'Couldn\'t check: $e';
+    }
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _result = r;
+      _version = Ytdlp.version();
+    });
+  }
+
+  static String _ago(String last) {
+    final ms = int.tryParse(last.split('|').first);
+    if (ms == null) return 'never';
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    if (d.inMinutes < 2) return 'just now';
+    if (d.inHours < 2) return '${d.inMinutes} min ago';
+    if (d.inDays < 2) return '${d.inHours} h ago';
+    return '${d.inDays} days ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context).settings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 24),
+        FutureBuilder<String>(
+          future: _version,
+          builder: (context, v) => ListTile(
+            leading: const Icon(Icons.system_update_rounded),
+            title: Text('Downloader: yt-dlp ${v.data ?? '…'}'),
+            subtitle: Text(
+              _result ??
+                  'Last checked ${_ago(s.ytdlpLastCheck)}. Updates fix SoundCloud changes, no new app needed.',
+            ),
+            trailing: _checking
+                ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+                : TextButton(onPressed: _check, child: const Text('Check now')),
+          ),
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.update_rounded),
+          title: const Text('Check for updates in the background'),
+          subtitle: const Text('Once a day, when there\'s internet'),
+          value: s.ytdlpAutoUpdate,
+          onChanged: (v) => s.ytdlpAutoUpdate = v,
+        ),
+        ListTile(
+          leading: const Icon(Icons.alt_route_rounded),
+          title: const Text('Release line'),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Stable'),
+                  selected: s.ytdlpChannel == 'stable',
+                  onSelected: (_) => s.ytdlpChannel = 'stable',
+                ),
+                ChoiceChip(
+                  label: const Text('Nightly (newest fixes)'),
+                  selected: s.ytdlpChannel == 'nightly',
+                  onSelected: (_) => s.ytdlpChannel = 'nightly',
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (s.ytdlpChannel == 'stable')
+          SwitchListTile(
+            secondary: const Icon(Icons.healing_rounded),
+            title: const Text('Try nightly when stable can\'t fix a failure'),
+            subtitle: const Text('Fixes often land in nightly first'),
+            value: s.ytdlpNightlyFallback,
+            onChanged: (v) => s.ytdlpNightlyFallback = v,
+          ),
+      ],
+    );
+  }
 }
