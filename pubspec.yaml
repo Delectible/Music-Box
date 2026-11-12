@@ -3,7 +3,7 @@ description: >-
   A simple, customisable music player built for car screens: big controls,
   a full screen drive player, lots of ways to sort and view your library.
 publish_to: none
-version: 0.3.7+17
+version: 0.3.8+18
 
 environment:
   sdk: ^3.12.0

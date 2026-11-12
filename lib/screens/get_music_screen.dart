@@ -834,7 +834,6 @@ class _DownloadsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = AppScope.of(context).downloads;
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Downloads'),
@@ -844,25 +843,69 @@ class _DownloadsScreen extends StatelessWidget {
         listenable: d,
         builder: (context, _) {
           if (d.jobs.isEmpty && d.report == null) return const Center(child: Text('Nothing downloading'));
+          final review = d.toReview;
+          // In the order they run: the ones going now, then the queue.
+          final active = [
+            ...d.jobs.where((j) => j.state == JobState.downloading || j.state == JobState.tagging),
+            ...d.jobs.where((j) => j.state == JobState.queued),
+          ];
+          final failed = d.jobs.reversed.where((j) => j.state == JobState.failed).toList();
+          final done = d.jobs.reversed
+              .where((j) => j.state == JobState.done || j.state == JobState.skipped)
+              .toList();
           return ListView(
             padding: const EdgeInsets.only(bottom: 40),
             children: [
+              // Things waiting on you come first.
               if (d.slowHint) _SlowCard(downloads: d),
-              if (d.toReview.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
-                    onPressed: () => openCloseMatches(context),
-                    icon: const Icon(Icons.compare_arrows_rounded),
-                    label: Text(
-                      d.toReview.length == 1
-                          ? 'Close match found: check it'
-                          : '${d.toReview.length} close matches found: check them',
-                    ),
+              if (review.isNotEmpty) ...[
+                _Section(
+                  'Needs you',
+                  review.length,
+                  icon: Icons.priority_high_rounded,
+                  action: review.length > 1
+                      ? FilledButton.tonal(
+                          style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                          onPressed: () => openCloseMatches(context),
+                          child: const Text('Check all'),
+                        )
+                      : null,
+                ),
+                for (final j in review) _JobTile(job: j, downloads: d),
+              ],
+              if (d.report case final r?) _ReportCard(report: r, downloads: d),
+              if (active.isNotEmpty) ...[
+                _Section('Downloading', active.length, icon: Icons.downloading_rounded),
+                for (final j in active) _JobTile(job: j, downloads: d),
+              ],
+              if (failed.isNotEmpty) ...[
+                _Section(
+                  'Didn\'t work',
+                  failed.length,
+                  icon: Icons.error_outline_rounded,
+                  action: TextButton.icon(
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: d.retryFailed,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Try all again'),
                   ),
                 ),
-              if (d.report case final r?) _ReportCard(report: r, downloads: d),
+                for (final j in failed) _JobTile(job: j, downloads: d),
+              ],
+              if (done.isNotEmpty) ...[
+                _Section(
+                  'Done',
+                  done.length,
+                  icon: Icons.check_circle_outline_rounded,
+                  action: TextButton(
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: d.clearDone,
+                    child: const Text('Clear'),
+                  ),
+                ),
+                for (final j in done) _JobTile(job: j, downloads: d),
+              ],
+              const Divider(height: 32),
               FutureBuilder(
                 future: d.folder(),
                 builder: (context, f) => ListTile(
@@ -870,62 +913,93 @@ class _DownloadsScreen extends StatelessWidget {
                   title: Text('Saving to ${f.data ?? '…'}'),
                 ),
               ),
-              for (final j in d.jobs.reversed)
-                ListTile(
-                  minTileHeight: 72,
-                  leading: switch (j.state) {
-                    JobState.queued => const Icon(Icons.schedule_rounded),
-                    JobState.downloading || JobState.tagging => SizedBox.square(
-                      dimension: 32,
-                      child: CircularProgressIndicator(
-                        value: j.state == JobState.tagging || j.progress < 0 ? null : j.progress,
-                      ),
-                    ),
-                    JobState.done => Icon(Icons.check_circle_rounded, color: cs.primary),
-                    JobState.skipped => const Icon(Icons.check_circle_outline_rounded),
-                    JobState.failed => Icon(Icons.error_rounded, color: cs.error),
-                    JobState.review => Icon(Icons.help_rounded, color: cs.tertiary),
-                  },
-                  title: Text(j.track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                    switch (j.state) {
-                      JobState.queued => 'Waiting · ${j.track.artist}',
-                      JobState.downloading =>
-                        j.note ??
-                            (j.progress < 0 ? 'Downloading…' : 'Downloading ${(j.progress * 100).round()}%'),
-                      JobState.tagging => 'Adding tags and cover…',
-                      JobState.done => 'In your library · ${j.track.artist}',
-                      JobState.skipped => j.error ?? 'Skipped',
-                      JobState.failed => j.error ?? 'Failed',
-                      JobState.review => 'Found "${j.close?.title}" · ${j.track.artist}',
-                    },
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: j.active
-                      ? IconButton(
-                          tooltip: 'Cancel',
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => d.cancel(j),
-                        )
-                      : j.state == JobState.review
-                      ? FilledButton.tonal(
-                          style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-                          onPressed: () => openCloseMatches(context),
-                          child: const Text('Close match found'),
-                        )
-                      : j.state == JobState.failed
-                      ? IconButton(
-                          tooltip: 'Retry',
-                          icon: const Icon(Icons.refresh_rounded),
-                          onPressed: () => d.retry(j),
-                        )
-                      : null,
-                ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// A heading for one group of downloads, with its count and an action.
+class _Section extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final Widget? action;
+  const _Section(this.title, this.count, {required this.icon, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 12, 4),
+      child: Row(
+        children: [
+          Icon(icon, color: cs.primary, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('$title ($count)', style: tt.titleMedium?.copyWith(color: cs.primary)),
+          ),
+          ?action,
+        ],
+      ),
+    );
+  }
+}
+
+class _JobTile extends StatelessWidget {
+  final DownloadJob job;
+  final Downloads downloads;
+  const _JobTile({required this.job, required this.downloads});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final j = job;
+    final d = downloads;
+    return ListTile(
+      minTileHeight: 72,
+      leading: switch (j.state) {
+        JobState.queued => const Icon(Icons.schedule_rounded),
+        JobState.downloading || JobState.tagging => SizedBox.square(
+          dimension: 32,
+          child: CircularProgressIndicator(
+            value: j.state == JobState.tagging || j.progress < 0 ? null : j.progress,
+          ),
+        ),
+        JobState.done => Icon(Icons.check_circle_rounded, color: cs.primary),
+        JobState.skipped => const Icon(Icons.check_circle_outline_rounded),
+        JobState.failed => Icon(Icons.error_rounded, color: cs.error),
+        JobState.review => Icon(Icons.help_rounded, color: cs.tertiary),
+      },
+      title: Text(j.track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        switch (j.state) {
+          JobState.queued => 'Waiting · ${j.track.artist}',
+          JobState.downloading =>
+            j.note ?? (j.progress < 0 ? 'Downloading…' : 'Downloading ${(j.progress * 100).round()}%'),
+          JobState.tagging => 'Adding tags and cover…',
+          JobState.done => 'In your library · ${j.track.artist}',
+          JobState.skipped => j.error ?? 'Skipped',
+          JobState.failed => j.error ?? 'Failed',
+          JobState.review => 'Found "${j.close?.title}" · ${j.track.artist}',
+        },
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: j.active
+          ? IconButton(tooltip: 'Cancel', icon: const Icon(Icons.close_rounded), onPressed: () => d.cancel(j))
+          : j.state == JobState.review
+          ? FilledButton.tonal(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+              onPressed: () => openCloseMatches(context),
+              child: const Text('Close match found'),
+            )
+          : j.state == JobState.failed
+          ? IconButton(tooltip: 'Retry', icon: const Icon(Icons.refresh_rounded), onPressed: () => d.retry(j))
+          : null,
     );
   }
 }
@@ -973,7 +1047,8 @@ class _SlowCard extends StatelessWidget {
   }
 }
 
-/// How the last run of downloads went: what was saved and what wasn't (and why).
+/// How the last run of downloads went, in one line (the groups below list
+/// each song).
 class _ReportCard extends StatelessWidget {
   final DownloadReport report;
   final Downloads downloads;
@@ -981,77 +1056,25 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final r = report;
-    String name(DownloadJob j) => [j.track.artist, j.track.title].where((x) => x.isNotEmpty).join(' – ');
-    Widget group(String title, List<DownloadJob> list, IconData icon, Color color, {bool reasons = false}) =>
-        ExpansionTile(
-          leading: Icon(icon, color: color),
-          title: Text('$title (${list.length})'),
-          initiallyExpanded: reasons,
-          children: [
-            for (final j in list)
-              ListTile(
-                dense: !reasons,
-                title: Text(name(j), maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: reasons ? Text(j.error ?? 'Failed', maxLines: 2) : null,
-              ),
-          ],
-        );
     return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ListTile(
-              title: Text('Finished ${r.total} ${r.total == 1 ? 'song' : 'songs'}', style: tt.titleLarge),
-              subtitle: Text(
-                [
-                  '${r.saved.length} saved',
-                  if (r.already.isNotEmpty) '${r.already.length} already there',
-                  if (r.close.isNotEmpty) '${r.close.length} close matches to check',
-                  if (r.failed.isNotEmpty) '${r.failed.length} didn\'t work',
-                ].join(' · '),
-              ),
-              trailing: IconButton(
-                tooltip: 'Dismiss',
-                icon: const Icon(Icons.close_rounded),
-                onPressed: downloads.dismissReport,
-              ),
-            ),
-            if (r.close.isNotEmpty)
-              ListTile(
-                leading: Icon(Icons.help_rounded, color: cs.tertiary),
-                title: Text('Close matches (${r.close.length})'),
-                subtitle: const Text('Not saved yet: allow or disallow each one'),
-                trailing: FilledButton.tonal(
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-                  onPressed: () => openCloseMatches(context),
-                  child: const Text('Close match found'),
-                ),
-              ),
-            if (r.failed.isNotEmpty)
-              group('Didn\'t work', r.failed, Icons.error_rounded, cs.error, reasons: true),
-            if (r.saved.isNotEmpty) group('Saved', r.saved, Icons.check_circle_rounded, cs.primary),
-            if (r.already.isNotEmpty)
-              group('Already there', r.already, Icons.check_circle_outline_rounded, cs.outline),
-            if (r.failed.any((j) => j.state == JobState.failed))
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
-                  onPressed: () {
-                    downloads.dismissReport();
-                    downloads.retryFailed();
-                  },
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Try the failed ones again'),
-                ),
-              ),
-          ],
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: ListTile(
+        leading: const Icon(Icons.flag_rounded),
+        title: Text('Finished ${r.total} ${r.total == 1 ? 'song' : 'songs'}', style: tt.titleMedium),
+        subtitle: Text(
+          [
+            '${r.saved.length} saved',
+            if (r.already.isNotEmpty) '${r.already.length} already there',
+            if (r.close.isNotEmpty) '${r.close.length} close matches to check',
+            if (r.failed.isNotEmpty) '${r.failed.length} didn\'t work',
+          ].join(' · '),
+        ),
+        trailing: IconButton(
+          tooltip: 'Dismiss',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: downloads.dismissReport,
         ),
       ),
     );

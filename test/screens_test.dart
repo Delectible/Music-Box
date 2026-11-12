@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadie/screens/close_matches_screen.dart';
+import 'package:roadie/screens/get_music_screen.dart' show openDownloads;
 import 'package:roadie/core/sources.dart';
 import 'package:roadie/core/scope.dart';
 import 'package:roadie/core/matcher.dart';
@@ -478,6 +479,51 @@ void main() {
       for (final j in jobs) {
         j.cancelled = true;
       }
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('downloads: needs you, downloading, didn\'t work, done', (tester) async {
+    for (final size in [car, phone]) {
+      setScreen(tester, size);
+      final a = await _app({});
+      await tester.pumpWidget(a.widget);
+      await _settle(tester);
+      final ctx = tester.element(find.byType(Navigator).first);
+      final d = AppScope.of(ctx).downloads;
+      RemoteTrack t(String title) =>
+          RemoteTrack(title: title, artist: 'Lumen Coast', url: Uri.parse('https://x/$title'), ext: 'mp3');
+      DownloadJob job(String title, JobState s, {String? error, double p = 0}) => DownloadJob(t(title))
+        ..state = s
+        ..error = error
+        ..progress = p;
+      d.jobs.addAll([
+        job('Harbour', JobState.done),
+        job('Gone', JobState.failed, error: 'Not found on SoundCloud'),
+        job('Coastlines', JobState.downloading, p: 0.42),
+        job('Tide', JobState.queued),
+        job('Daylight', JobState.skipped, error: 'Already downloaded'),
+        reviewJob(
+          t('Night Drive'),
+          Found(Uri.parse('https://soundcloud.com/a/b'), 'Night Drive (Live)', 'fan', null, null, 0.4),
+        ),
+      ]);
+      openDownloads(ctx);
+      await _settle(tester);
+      await shot(tester, size == car ? 'car_18_downloads' : 'phone_downloads');
+      final y = {
+        for (final w in ['Needs you (1)', 'Downloading (2)', 'Didn\'t work (1)', 'Done (2)'])
+          w: tester.getTopLeft(find.text(w)).dy,
+      };
+      expect(y['Needs you (1)']! < y['Downloading (2)']!, isTrue);
+      expect(y['Downloading (2)']! < y['Didn\'t work (1)']!, isTrue);
+      await tester.tap(find.text('Clear finished'));
+      await tester.pump();
+      expect(d.jobs.where((j) => j.state == JobState.review).length, 1); // kept
+      for (final j in d.jobs) {
+        j.cancelled = true;
+      }
+      d.jobs.clear();
       await tester.pumpWidget(const SizedBox());
     }
   });

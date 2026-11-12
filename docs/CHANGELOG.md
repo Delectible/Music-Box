@@ -157,6 +157,10 @@
 54. Go+ preview-only and DRM-locked SoundCloud uploads: the download looks
    for another upload of the same song (the matcher, close matches to
    check); plain message for DRM. (0.3.7)
+55. Downloads screen in groups: Needs you (close matches) at the very top,
+   then Downloading (running, then the queue), Didn't work (Try all
+   again), Done (Clear). "Clear finished" keeps close matches waiting on
+   a decision. (0.3.8)
 
 ## Ideas
 

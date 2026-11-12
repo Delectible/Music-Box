@@ -225,8 +225,15 @@ class Downloads extends ChangeNotifier {
     _pump();
   }
 
+  /// Takes the saved / already-there ones off the list.
+  void clearDone() {
+    jobs.removeWhere((j) => j.state == JobState.done || j.state == JobState.skipped);
+    notifyListeners();
+  }
+
+  /// Everything finished, except close matches still waiting on a decision.
   void clearFinished() {
-    jobs.removeWhere((j) => !j.active);
+    jobs.removeWhere((j) => !j.active && j.state != JobState.review);
     notifyListeners();
   }
 
