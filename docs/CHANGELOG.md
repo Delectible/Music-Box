@@ -164,6 +164,9 @@
 56. Close matches: Allow / Disallow (and all) stop that song's preview.
    Messages at the bottom go away after 4 s, also those with a button
    (newer Flutter kept those up until tapped: `persist: false`). (0.3.9)
+57. Added sites and links on plain http:// (no https) work: the browser
+   showed net::ERR_CLEARTEXT_NOT_PERMITTED (manifest
+   usesCleartextTraffic). Typed addresses still try https first. (0.3.9)
 
 ## Ideas
 

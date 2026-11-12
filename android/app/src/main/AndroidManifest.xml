@@ -28,7 +28,7 @@
         android:allowBackup="true"
         android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <!-- Any orientation: car screens are landscape, phones portrait. -->
         <activity
             android:name=".MainActivity"
