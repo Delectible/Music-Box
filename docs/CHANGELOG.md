@@ -122,6 +122,16 @@
    turned off: Get music > Sources > SoundCloud) and straight away when a
    failure looks like SoundCloud changed something (stable, then nightly).
    (0.3.5)
+47. Spotify (track, album, playlist) and YouTube (video, playlist) links
+   give the song details; each song is found on SoundCloud (`SongMatcher`:
+   title, artist, length, refuses remixes / covers / sped up / live / Go+
+   clips unless that's the song) and saved with the Spotify / YouTube tags.
+   Spotify playlists: first 100 songs. Any pasted link opens, whatever
+   source is ticked. (0.3.5)
+48. Downloads at the same time: 1–8 (Settings > Get music, default 4);
+   streams fetched in 4 pieces at once; yt-dlp started at launch.
+   A summary when a run finishes (saved / already there / didn't work and
+   why, try the failed ones again). (0.3.5)
 
 ## Ideas
 

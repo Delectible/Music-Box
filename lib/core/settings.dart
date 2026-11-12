@@ -207,6 +207,10 @@ class Settings extends ChangeNotifier {
   bool get lookUpDownloads => _p.getBool('lookUpDownloads') ?? true;
   set lookUpDownloads(bool v) => _set('lookUpDownloads', v);
 
+  /// Songs downloaded at the same time (1..8).
+  int get downloadThreads => (_p.getInt('downloadThreads') ?? 4).clamp(1, 8);
+  set downloadThreads(int v) => _set('downloadThreads', v.clamp(1, 8));
+
   /// Prefer lossless (FLAC) when a source has it.
   bool get preferLossless => _p.getBool('preferLossless') ?? true;
   set preferLossless(bool v) => _set('preferLossless', v);

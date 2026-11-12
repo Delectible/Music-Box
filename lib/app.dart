@@ -12,6 +12,7 @@ import 'core/scope.dart';
 import 'core/settings.dart';
 import 'core/tag_fixer.dart';
 import 'core/theme.dart';
+import 'screens/get_music_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_view.dart';
 import 'screens/now_playing.dart';
@@ -38,6 +39,33 @@ class RoadieApp extends StatefulWidget {
 class _RoadieAppState extends State<RoadieApp> {
   late final _accent = Accent(widget.settings, widget.player, widget.library);
   final _nav = GlobalKey<NavigatorState>();
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+
+  /// When a run of downloads finishes, say how it went, wherever you are.
+  DownloadReport? _told;
+  void _report() {
+    final r = _downloads.report;
+    if (r == null || identical(r, _told)) return;
+    _told = r;
+    final bad = r.failed.length;
+    _messenger.currentState?.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(
+          'Downloads finished: ${r.saved.length + r.already.length} of ${r.total} saved'
+          '${bad > 0 ? ' · $bad didn\'t work' : ''}',
+        ),
+        action: SnackBarAction(
+          label: 'See list',
+          onPressed: () {
+            final ctx = _nav.currentContext;
+            if (ctx != null) openDownloads(ctx);
+          },
+        ),
+      ),
+    );
+  }
+
   late final _downloads = Downloads(widget.settings, widget.library, widget.playlists);
   late final _fixer = TagFixer(widget.library);
   late final _preview = Preview(widget.player);
@@ -72,6 +100,7 @@ class _RoadieAppState extends State<RoadieApp> {
       if (n != _night && mounted) setState(() => _night = n);
     });
     widget.player.addListener(_warm);
+    _downloads.addListener(_report);
     widget.settings.addListener(_bars);
     _bars();
     PlayerSheet.opener = (_) {
@@ -111,6 +140,7 @@ class _RoadieAppState extends State<RoadieApp> {
           return MaterialApp(
             title: 'Roadie',
             navigatorKey: _nav,
+            scaffoldMessengerKey: _messenger,
             debugShowCheckedModeBanner: false,
             themeMode: s.themeMode,
             theme: buildTheme(Brightness.light, accent),

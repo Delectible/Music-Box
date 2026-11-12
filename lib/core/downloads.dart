@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'crash_log.dart';
 import 'http.dart';
 import 'library.dart';
+import 'matcher.dart';
 import 'metadata.dart';
 import 'native.dart';
 import 'playlists.dart';
@@ -32,6 +33,9 @@ class DownloadJob {
 
   /// Shown while it waits to try again after a dropped connection.
   String? note;
+
+  /// The SoundCloud upload it was found as (songs from Spotify / YouTube).
+  Uri? foundAt;
   String? path;
   bool cancelled = false;
   DownloadJob(this.track);
@@ -39,7 +43,15 @@ class DownloadJob {
   bool get active => state == JobState.queued || state == JobState.downloading || state == JobState.tagging;
 }
 
-/// The download queue: two at a time, saved as Artist/Album/NN Title.ext in
+/// How a run of downloads went (everything queued until the queue emptied).
+class DownloadReport {
+  final List<DownloadJob> saved, already, failed;
+  final DateTime at;
+  DownloadReport(this.saved, this.already, this.failed) : at = DateTime.now();
+  int get total => saved.length + already.length + failed.length;
+}
+
+/// The download queue: several at a time (Settings), saved as Artist/Album/NN Title.ext in
 /// the chosen folder, tagged (source info, then MusicBrainz for what's
 /// missing), cover embedded, then added to the library.
 class Downloads extends ChangeNotifier {
@@ -57,12 +69,50 @@ class Downloads extends ChangeNotifier {
 
   int get activeCount => jobs.where((j) => j.active).length;
 
+  /// Jobs since the queue was last empty; reported once they're all finished.
+  final _round = <DownloadJob>[];
+
+  /// The last finished run, until it's dismissed.
+  DownloadReport? report;
+
+  void dismissReport() {
+    report = null;
+    notifyListeners();
+  }
+
+  void _maybeReport() {
+    if (_round.isEmpty || _round.any((j) => j.active)) return;
+    report = DownloadReport(
+      [
+        for (final j in _round)
+          if (j.state == JobState.done) j,
+      ],
+      [
+        for (final j in _round)
+          if (j.state == JobState.skipped) j,
+      ],
+      [
+        for (final j in _round)
+          if (j.state == JobState.failed) j,
+      ],
+    );
+    _round.clear();
+  }
+
+  /// Every failed job again (from the report).
+  void retryFailed() {
+    for (final j in [...jobs.where((j) => j.state == JobState.failed)]) {
+      retry(j);
+    }
+  }
+
   int _shown = -1;
 
   /// Keeps Android from cutting the network while Roadie is in the
   /// background: a "Downloading" notification while anything is active.
   @override
   void notifyListeners() {
+    _maybeReport();
     super.notifyListeners();
     final n = activeCount;
     if (n == _shown) return;
@@ -82,6 +132,7 @@ class Downloads extends ChangeNotifier {
   void add(List<RemoteTrack> tracks, {String? playlist}) {
     final added = tracks.map(DownloadJob.new).toList();
     jobs.addAll(added);
+    _round.addAll(added);
     if (playlist != null && playlist.trim().isNotEmpty) _batches.add(_Batch(playlist.trim(), added));
     notifyListeners();
     _pump();
@@ -104,6 +155,7 @@ class Downloads extends ChangeNotifier {
       ..cancelled = false
       ..error = null
       ..progress = 0;
+    if (!_round.contains(j)) _round.add(j);
     notifyListeners();
     _pump();
   }
@@ -114,7 +166,7 @@ class Downloads extends ChangeNotifier {
   }
 
   void _pump() {
-    while (_running < 2) {
+    while (_running < settings.downloadThreads) {
       final next = jobs.where((j) => j.state == JobState.queued).firstOrNull;
       if (next == null) return;
       _running++;
@@ -243,7 +295,7 @@ class Downloads extends ChangeNotifier {
       // A batch whose last song failed still becomes a playlist of the rest.
       if (_newFiles.isEmpty && !(_rescan?.isActive ?? false)) scheduleMicrotask(_makePlaylists);
       j.error = j.cancelled ? 'Cancelled' : friendlyError(e);
-      if (!j.cancelled) {
+      if (!j.cancelled && e is! NoMatch) {
         CrashLog.record(e is YtdlpFailure ? '${e.message}\n${e.detail}' : e, st, where: 'download ${t.url}');
       }
     }
@@ -253,13 +305,42 @@ class Downloads extends ChangeNotifier {
   /// yt-dlp download (SoundCloud): the artist's file or the best full stream,
   /// named like the rest; returns the file it saved.
   Future<File> _ytdlpFetch(DownloadJob j, File planned, void Function(double) progress) async {
-    final base = planned.path.substring(0, planned.path.lastIndexOf('.'));
     await Directory(planned.parent.path).create(recursive: true);
+    if (!j.track.findOnSoundCloud) return _ytdlpGet(j, j.track.url, planned, progress);
+    // Songs from Spotify / YouTube: the best SoundCloud matches, in turn,
+    // until one gives the whole song (not a Go+ preview).
+    j.note = 'Finding it on SoundCloud…';
+    notifyListeners();
+    final pages = await SongMatcher.find(j.track);
+    Object? last;
+    for (final page in pages) {
+      if (j.cancelled) break;
+      try {
+        j.foundAt = page;
+        return await _ytdlpGet(j, page, planned, progress);
+      } on YtdlpFailure catch (e) {
+        if (e.message == 'Cancelled' || e.message.contains('internet')) rethrow;
+        last = e;
+      } on NotMusicFile catch (e) {
+        last = e;
+      }
+    }
+    if (last is YtdlpFailure && last.message.contains('preview')) {
+      throw NoMatch('On SoundCloud only as a 30-second preview (Go+)');
+    }
+    throw last ?? NoMatch('Not found on SoundCloud');
+  }
+
+  Future<File> _ytdlpGet(DownloadJob j, Uri page, File planned, void Function(double) progress) async {
+    final base = planned.path.substring(0, planned.path.lastIndexOf('.'));
     j.note = 'Starting…';
     notifyListeners();
     final r = await Ytdlp.download(
-      j.track.url.toString(),
+      page.toString(),
       [
+        // Streams come in pieces: fetch 4 at once.
+        '--concurrent-fragments',
+        '4',
         '-f',
         SoundCloud(original: settings.losslessFor('soundcloud')).format,
         '-o',
@@ -297,8 +378,10 @@ class Downloads extends ChangeNotifier {
     ).fill(guessFromPath(path));
     String? cover;
     try {
-      // The file's own tags win over what the site says.
-      tags = TagValues.fromMap(await Native.readTags(path)).fill(tags);
+      final own = TagValues.fromMap(await Native.readTags(path));
+      // The file's own tags win over what the site says, except for songs
+      // found on SoundCloud: the Spotify / YouTube details are the right ones.
+      tags = t.findOnSoundCloud ? tags.fill(own) : own.fill(tags);
     } on Object {
       // Not readable yet: write ours.
     }

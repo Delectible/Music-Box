@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/crash_log.dart';
 import '../core/downloads.dart';
 import '../core/http.dart';
+import '../core/matcher.dart';
 import '../core/preview.dart';
 import '../core/scope.dart';
 import '../core/sources.dart';
@@ -68,7 +69,8 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
     if (q.isEmpty) return;
     FocusScope.of(context).unfocus();
     final id = ++_searchId;
-    if (ticked.contains('link')) {
+    // Any pasted link (Spotify, YouTube, SoundCloud, a file…) is opened, whatever is ticked.
+    if (ticked.contains('link') || RegExp(r'^(https?://|spotify:)\S+$').hasMatch(q)) {
       final link = sources.firstWhere((x) => x.id == 'link');
       final messenger = ScaffoldMessenger.of(context);
       setState(() => _checking = true);
@@ -748,7 +750,11 @@ class _TrackRow extends StatelessWidget {
               leading: IconButton.filledTonal(
                 iconSize: 30,
                 tooltip: on ? 'Stop preview' : 'Preview',
-                onPressed: () => pv.toggle(url, resolve: track.resolvePreview),
+                onPressed: () => pv.toggle(
+                  url,
+                  // Spotify / YouTube songs: hear the SoundCloud upload that would be saved.
+                  resolve: track.findOnSoundCloud ? () => SongMatcher.preview(track) : track.resolvePreview,
+                ),
                 icon: on && pv.loading
                     ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))
                     : Icon(on ? Icons.stop_rounded : Icons.play_arrow_rounded),
@@ -830,10 +836,11 @@ class _DownloadsScreen extends StatelessWidget {
       body: ListenableBuilder(
         listenable: d,
         builder: (context, _) {
-          if (d.jobs.isEmpty) return const Center(child: Text('Nothing downloading'));
+          if (d.jobs.isEmpty && d.report == null) return const Center(child: Text('Nothing downloading'));
           return ListView(
             padding: const EdgeInsets.only(bottom: 40),
             children: [
+              if (d.report case final r?) _ReportCard(report: r, downloads: d),
               FutureBuilder(
                 future: d.folder(),
                 builder: (context, f) => ListTile(
@@ -888,6 +895,79 @@ class _DownloadsScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// How the last run of downloads went: what was saved and what wasn't (and why).
+class _ReportCard extends StatelessWidget {
+  final DownloadReport report;
+  final Downloads downloads;
+  const _ReportCard({required this.report, required this.downloads});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final r = report;
+    String name(DownloadJob j) => [j.track.artist, j.track.title].where((x) => x.isNotEmpty).join(' – ');
+    Widget group(String title, List<DownloadJob> list, IconData icon, Color color, {bool reasons = false}) =>
+        ExpansionTile(
+          leading: Icon(icon, color: color),
+          title: Text('$title (${list.length})'),
+          initiallyExpanded: reasons,
+          children: [
+            for (final j in list)
+              ListTile(
+                dense: !reasons,
+                title: Text(name(j), maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: reasons ? Text(j.error ?? 'Failed', maxLines: 2) : null,
+              ),
+          ],
+        );
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              title: Text('Finished ${r.total} ${r.total == 1 ? 'song' : 'songs'}', style: tt.titleLarge),
+              subtitle: Text(
+                [
+                  '${r.saved.length} saved',
+                  if (r.already.isNotEmpty) '${r.already.length} already there',
+                  if (r.failed.isNotEmpty) '${r.failed.length} didn\'t work',
+                ].join(' · '),
+              ),
+              trailing: IconButton(
+                tooltip: 'Dismiss',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: downloads.dismissReport,
+              ),
+            ),
+            if (r.failed.isNotEmpty)
+              group('Didn\'t work', r.failed, Icons.error_rounded, cs.error, reasons: true),
+            if (r.saved.isNotEmpty) group('Saved', r.saved, Icons.check_circle_rounded, cs.primary),
+            if (r.already.isNotEmpty)
+              group('Already there', r.already, Icons.check_circle_outline_rounded, cs.outline),
+            if (r.failed.any((j) => j.state == JobState.failed))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
+                  onPressed: () {
+                    downloads.dismissReport();
+                    downloads.retryFailed();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Try the failed ones again'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -977,6 +1057,26 @@ class DownloadOptions extends StatelessWidget {
                 final picked = await pickFolder(context, title: 'Save downloads to', start: f.data);
                 if (picked != null) s.downloadFolder = picked;
               },
+            ),
+          ),
+          const ListTile(
+            leading: Icon(Icons.speed_rounded),
+            title: Text('Downloads at the same time'),
+            subtitle: Text('More is faster on good internet; fewer is gentler on weak signal'),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final n in const [1, 2, 3, 4, 6, 8])
+                  ChoiceChip(
+                    label: Text('$n'),
+                    selected: s.downloadThreads == n,
+                    onSelected: (_) => s.downloadThreads = n,
+                  ),
+              ],
             ),
           ),
           SwitchListTile(

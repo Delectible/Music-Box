@@ -59,6 +59,8 @@ Future<void> _start() async {
 
   settings.addListener(syncYtdlp);
   syncYtdlp();
+  // Start Python / yt-dlp now so the first search or download doesn't wait for it.
+  unawaited(Ytdlp.version());
   settings.addListener(syncEngine);
   levelling.addListener(() => unawaited(engine.refreshSound()));
   syncEngine();

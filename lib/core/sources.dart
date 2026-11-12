@@ -54,6 +54,11 @@ class RemoteTrack {
   /// The real stream to preview, when [preview] / [url] is only a page.
   final Future<Uri> Function()? resolvePreview;
 
+  /// Only the song's details came from [url] (Spotify, YouTube): the audio
+  /// is found on SoundCloud at download time (`SongMatcher`), and these tags
+  /// win over the upload's.
+  final bool findOnSoundCloud;
+
   const RemoteTrack({
     required this.title,
     required this.url,
@@ -72,6 +77,7 @@ class RemoteTrack {
     this.lookUp = true,
     this.viaYtdlp = false,
     this.resolvePreview,
+    this.findOnSoundCloud = false,
   });
 
   Uri get previewUrl => preview ?? url;
@@ -89,6 +95,9 @@ abstract class MusicSource {
 
 /// Built-in source ids, in the default order.
 const builtInSources = ['soundcloud', 'archive', 'podcasts', 'youtube', 'jamendo', 'ccmixter', 'link'];
+
+/// What a downloaded file's quality badge says for songs found on SoundCloud.
+const viaSoundCloud = 'via SoundCloud';
 
 /// Sources that can download lossless (FLAC) when it's there.
 const losslessSources = {'archive', 'jamendo', 'ccmixter'};
@@ -415,12 +424,7 @@ class CcMixter extends MusicSource {
   }
 
   @override
-  Future<List<RemoteTrack>> tracks(RemoteItem item) async => switch (item.source) {
-    'youtube' => YouTube().tracks(item),
-    'soundcloud' => SoundCloud().tracks(item),
-    'podcasts' => Podcasts().tracks(item),
-    _ => [item.data! as RemoteTrack],
-  };
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
 }
 
 /// The link is a web page: look for music files on it in the browser.
@@ -470,6 +474,7 @@ class DirectLink extends MusicSource {
     // YouTube videos and playlists, and podcast feeds, have their own sources.
     if (isYouTube(uri)) return YouTube().fromUrl(uri);
     if (SoundCloud.isLink(uri)) return SoundCloud().fromUrl(uri);
+    if (Spotify.isLink(uri)) return Spotify().fromUrl(uri);
     String? served;
     final check = probe;
     if (check != null) {
@@ -509,7 +514,13 @@ class DirectLink extends MusicSource {
   }
 
   @override
-  Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => switch (item.source) {
+    'youtube' => YouTube().tracks(item),
+    'soundcloud' => SoundCloud().tracks(item),
+    'spotify' => Spotify().tracks(item),
+    'podcasts' => Podcasts().tracks(item),
+    _ => [item.data! as RemoteTrack],
+  };
 }
 
 /// A website the user added. With a [search] address ("…{q}…") a search
@@ -583,7 +594,7 @@ class YouTube extends MusicSource {
   @override
   String get name => 'YouTube';
   @override
-  String get blurb => 'Videos and playlists: Creative Commons, free releases, talks, podcasts';
+  String get blurb => 'Videos and playlists for the song details; the songs come from SoundCloud';
 
   static RemoteTrack trackOf(yt.Video v, {String album = '', int number = 0}) {
     var artist = v.author.replaceAll(RegExp(r'\s*-\s*Topic$'), '').replaceAll(RegExp(r'VEVO$'), '').trim();
@@ -610,12 +621,14 @@ class YouTube extends MusicSource {
       year: '${v.uploadDate?.year ?? v.publishDate?.year ?? ''}',
       track: number,
       url: Uri.parse(v.url),
-      ext: 'm4a',
+      ext: 'mp3',
       length: v.duration,
       cover: v.thumbnails.highResUrl,
-      quality: 'AAC',
-      youtubeId: v.id.value,
-      resolvePreview: () => previewUrl(v.id.value),
+      quality: viaSoundCloud,
+      // YouTube won't hand its audio to apps any more: the details come
+      // from here, the song itself from SoundCloud.
+      viaYtdlp: true,
+      findOnSoundCloud: true,
     );
   }
 
@@ -1062,4 +1075,139 @@ class SoundCloud extends MusicSource {
         trackOf(entries[i].cast<String, Object?>(), album: album, number: i + 1),
     ];
   }
+}
+
+/// Spotify links (track, album, playlist): the song details only, from
+/// Spotify's public embed pages (no account). The songs are found on
+/// SoundCloud. Playlists give their first 100 songs.
+class Spotify extends MusicSource {
+  @override
+  String get id => 'spotify';
+  @override
+  String get name => 'Spotify';
+  @override
+  String get blurb => 'Track, album and playlist links; the songs come from SoundCloud';
+  @override
+  bool get searchable => false;
+
+  static bool isLink(Uri u) {
+    final h = u.host.toLowerCase();
+    return h == 'open.spotify.com' || h == 'spotify.link' || h == 'spotify.app.link' || u.scheme == 'spotify';
+  }
+
+  static final _ref = RegExp(r'(track|album|playlist)[/:]([A-Za-z0-9]{22})');
+
+  @override
+  Future<List<RemoteItem>> search(String query) async {
+    final u = Uri.tryParse(query.trim());
+    return u != null && isLink(u) ? fromUrl(u) : const [];
+  }
+
+  Future<List<RemoteItem>> fromUrl(Uri u) async {
+    var m = _ref.firstMatch(u.toString());
+    if (m == null && u.host.contains('link')) {
+      // Short links: follow them to the real one.
+      final (page, ended) = await Http.text(u);
+      m = _ref.firstMatch(ended.toString()) ?? _ref.firstMatch(page);
+    }
+    if (m == null) throw UnsupportedLink('That Spotify link isn\'t a song, album or playlist.');
+    final (page, _) = await Http.text(Uri.parse('https://open.spotify.com/embed/${m[1]}/${m[2]}'));
+    return [itemOf(m[1]!, m[2]!, page)];
+  }
+
+  /// The details on an embed page (its `__NEXT_DATA__`).
+  static RemoteItem itemOf(String kind, String id, String page) {
+    final m = RegExp(
+      r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+      dotAll: true,
+    ).firstMatch(page);
+    if (m == null) throw UnsupportedLink('Spotify didn\'t show that one (it may be private or removed).');
+    final data = jsonDecode(m[1]!) as Map;
+    final e =
+        ((((data['props'] as Map)['pageProps'] as Map)['state'] as Map)['data'] as Map)['entity'] as Map;
+    final name = '${e['name'] ?? e['title'] ?? ''}';
+    final cover = _cover(e);
+    final date = '${(e['releaseDate'] as Map?)?['isoString'] ?? ''}';
+    final year = date.length >= 4 ? date.substring(0, 4) : '';
+    if (kind == 'track') {
+      final artists = [for (final a in (e['artists'] as List? ?? const [])) '${(a as Map)['name']}'];
+      final t = RemoteTrack(
+        title: name,
+        artist: artists.join(', '),
+        year: year,
+        url: Uri.parse('https://open.spotify.com/track/$id'),
+        ext: 'mp3',
+        length: _ms(e['duration']),
+        cover: cover,
+        quality: viaSoundCloud,
+        viaYtdlp: true,
+        findOnSoundCloud: true,
+      );
+      return RemoteItem(
+        source: 'spotify',
+        id: id,
+        title: name,
+        artist: t.artist,
+        year: year,
+        cover: cover,
+        single: true,
+        data: [t],
+      );
+    }
+    final album = kind == 'album';
+    final owner = '${e['subtitle'] ?? ''}'.replaceAll('\u00a0', ' ');
+    final list = [
+      for (final (i, raw) in (e['trackList'] as List? ?? const []).indexed)
+        if (raw is Map && raw['isPlayable'] != false)
+          RemoteTrack(
+            title: '${raw['title'] ?? ''}',
+            artist: '${raw['subtitle'] ?? ''}'.replaceAll('\u00a0', ' ').replaceAll(RegExp(r',\s*'), ', '),
+            // An album's songs keep it; a playlist's get theirs from MusicBrainz.
+            album: album ? name : '',
+            albumArtist: album ? owner.split(',').first.trim() : '',
+            year: year,
+            track: album ? i + 1 : 0,
+            url: Uri.parse(
+              'https://open.spotify.com/${'${raw['uri'] ?? ''}'.replaceFirst('spotify:', '').replaceAll(':', '/')}',
+            ),
+            ext: 'mp3',
+            length: _ms(raw['duration']),
+            cover: album ? cover : null,
+            quality: viaSoundCloud,
+            viaYtdlp: true,
+            findOnSoundCloud: true,
+          ),
+    ];
+    return RemoteItem(
+      source: 'spotify',
+      id: id,
+      title: name,
+      artist: owner,
+      year: year,
+      cover: cover,
+      data: list,
+    );
+  }
+
+  static Duration? _ms(Object? v) => v is num && v > 0 ? Duration(milliseconds: v.toInt()) : null;
+
+  /// The biggest cover; Spotify's 640 px one when it's their usual address.
+  static String? _cover(Map<Object?, Object?> e) {
+    final imgs =
+        ((e['visualIdentity'] as Map?)?['image'] as List? ??
+                (e['coverArt'] as Map?)?['sources'] as List? ??
+                const [])
+            .whereType<Map<Object?, Object?>>()
+            .toList();
+    if (imgs.isEmpty) return null;
+    imgs.sort(
+      (a, b) =>
+          ((b['maxWidth'] ?? b['width'] ?? 0) as num).compareTo((a['maxWidth'] ?? a['width'] ?? 0) as num),
+    );
+    final url = '${imgs.first['url']}';
+    return url.replaceFirst('ab67616d00001e02', 'ab67616d0000b273');
+  }
+
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => (item.data! as List).cast<RemoteTrack>();
 }

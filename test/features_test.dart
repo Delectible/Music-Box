@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +21,7 @@ import 'package:roadie/core/playlists.dart';
 import 'package:roadie/core/quality.dart';
 import 'package:roadie/core/smart.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/core/matcher.dart';
 import 'package:roadie/core/ytdlp.dart';
 import 'package:roadie/screens/podcast_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -391,5 +394,100 @@ void main() {
     expect(t.viaYtdlp, isTrue);
     expect(SoundCloud.isLink(Uri.parse('https://on.soundcloud.com/abc')), isTrue);
     expect(SoundCloud.isLink(Uri.parse('https://example.com/x')), isFalse);
+  });
+
+  test('Matcher: picks the real song, not remixes, previews or other songs', () {
+    double sc(String t, String up, int secs) => SongMatcher.score(
+      title: 'Night Drive (feat. Ava Lane)',
+      artist: 'Lumen Coast, Ava Lane',
+      length: const Duration(seconds: 214),
+      candTitle: t,
+      candUploader: up,
+      candLength: Duration(seconds: secs),
+    );
+    final real = sc('Night Drive (feat. Ava Lane)', 'Lumen Coast', 213);
+    final reup = sc('Lumen Coast - Night Drive', 'some fan', 215);
+    expect(real, greaterThanOrEqualTo(SongMatcher.threshold));
+    expect(reup, greaterThanOrEqualTo(SongMatcher.threshold));
+    expect(sc('Night Drive (Remix)', 'Lumen Coast', 240), lessThan(SongMatcher.threshold));
+    expect(sc('Night Drive', 'Lumen Coast', 30), lessThan(SongMatcher.threshold)); // Go+ clip
+    expect(sc('Night Drive (sped up)', 'Lumen Coast', 170), lessThan(SongMatcher.threshold));
+    expect(sc('Daylight', 'Lumen Coast', 214), 0);
+    expect(sc('Night Drive', 'Other Band', 330), lessThan(SongMatcher.threshold));
+    expect(real, greaterThan(sc('Night Drive', 'Other Band', 214)));
+    // A remix is fine when that's the song asked for.
+    expect(
+      SongMatcher.score(
+        title: 'Night Drive (Remix)',
+        artist: 'Lumen Coast',
+        length: const Duration(seconds: 240),
+        candTitle: 'Lumen Coast - Night Drive (Remix)',
+        candUploader: 'x',
+        candLength: const Duration(seconds: 241),
+      ),
+      greaterThanOrEqualTo(SongMatcher.threshold),
+    );
+    expect(SongMatcher.coreTitle('Song - Remastered 2011'), 'Song');
+    expect(SongMatcher.artistsOf('A, B & C feat. D'), ['A', 'B', 'C', 'D']);
+  });
+
+  test('Spotify: song details from an embed page, songs found on SoundCloud', () {
+    final entity = {
+      'type': 'album',
+      'name': 'Coastlines',
+      'subtitle': 'Lumen Coast',
+      'releaseDate': {'isoString': '2021-05-01T00:00:00Z'},
+      'trackList': [
+        {
+          'uri': 'spotify:track:1111111111111111111111',
+          'title': 'Night Drive',
+          'subtitle': 'Lumen Coast, Ava Lane',
+          'duration': 214000,
+        },
+        {
+          'uri': 'spotify:track:2222222222222222222222',
+          'title': 'Gone',
+          'subtitle': 'Lumen Coast',
+          'duration': 180000,
+          'isPlayable': false,
+        },
+        {
+          'uri': 'spotify:track:3333333333333333333333',
+          'title': 'Harbour',
+          'subtitle': 'Lumen Coast',
+          'duration': 200000,
+        },
+      ],
+      'visualIdentity': {
+        'image': [
+          {'url': 'https://image-cdn.example/image/ab67616d00004851abc', 'maxWidth': 64},
+          {'url': 'https://image-cdn.example/image/ab67616d00001e02abc', 'maxWidth': 300},
+        ],
+      },
+    };
+    final page =
+        '<script id="__NEXT_DATA__" type="application/json">${jsonEncode({
+          'props': {
+            'pageProps': {
+              'state': {
+                'data': {'entity': entity},
+              },
+            },
+          },
+        })}</script>';
+    final item = Spotify.itemOf('album', 'x', page);
+    expect(item.title, 'Coastlines');
+    expect(item.cover, endsWith('ab67616d0000b273abc'));
+    final list = (item.data! as List).cast<RemoteTrack>();
+    expect(list.length, 2); // not the unplayable one
+    expect(list.first.artist, 'Lumen Coast, Ava Lane');
+    expect(list.first.album, 'Coastlines');
+    expect(list.first.year, '2021');
+    expect(list.first.track, 1);
+    expect(list.first.length, const Duration(seconds: 214));
+    expect(list.first.findOnSoundCloud, isTrue);
+    expect(list.first.url.toString(), 'https://open.spotify.com/track/1111111111111111111111');
+    expect(Spotify.isLink(Uri.parse('https://open.spotify.com/intl-de/playlist/abc')), isTrue);
+    expect(() => Spotify.itemOf('track', 'x', '<html></html>'), throwsA(isA<UnsupportedLink>()));
   });
 }

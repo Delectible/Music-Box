@@ -175,6 +175,13 @@ class Http {
     return jsonDecode(text);
   }
 
+  /// A page's text and where it ended up after redirects.
+  static Future<(String, Uri)> text(Uri uri, {Map<String, String>? headers}) async {
+    final res = await _get(uri, headers: headers);
+    final text = await res.transform(utf8.decoder).join();
+    return (text, res.redirects.isEmpty ? uri : uri.resolveUri(res.redirects.last.location));
+  }
+
   static Future<List<int>> bytes(Uri uri) async {
     final res = await _get(uri);
     final out = BytesBuilder(copy: false);

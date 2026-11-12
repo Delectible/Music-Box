@@ -48,6 +48,9 @@ then `flutter pub get`.
   releases: `UpdateWorker` daily (WorkManager), and `Ytdlp._healing`
   updates and retries once when an error looks like a site change. When a
   site breaks, the fix is usually just a yt-dlp release, no app change.
+- `lib/core/matcher.dart` (`SongMatcher`): finds Spotify / YouTube songs
+  (`RemoteTrack.findOnSoundCloud`) on SoundCloud. `Spotify` in
+  sources.dart reads the public embed page's `__NEXT_DATA__`.
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
 - `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain
