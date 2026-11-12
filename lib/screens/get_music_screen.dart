@@ -617,7 +617,7 @@ class _ItemScreenState extends State<_ItemScreen> {
       if (choice == null) return; // cancelled
       playlist = choice.isEmpty ? null : choice;
     }
-    scope.downloads.add(list, playlist: playlist);
+    scope.downloads.add(list, playlist: playlist, cover: widget.item.cover);
     final folder = await scope.downloads.folder();
     messenger.showSnackBar(
       SnackBar(

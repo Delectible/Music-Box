@@ -23,7 +23,10 @@ enum JobState { queued, downloading, tagging, done, failed, skipped, review }
 class _Batch {
   final String playlist;
   final List<DownloadJob> jobs;
-  _Batch(this.playlist, this.jobs);
+
+  /// The source playlist's picture (Spotify, YouTube, SoundCloud…).
+  final String? cover;
+  _Batch(this.playlist, this.jobs, this.cover);
 }
 
 class DownloadJob {
@@ -195,11 +198,11 @@ class Downloads extends ChangeNotifier {
 
   /// Queues [tracks]; with [playlist], they're saved as that playlist (in
   /// this order) once they've all finished.
-  void add(List<RemoteTrack> tracks, {String? playlist}) {
+  void add(List<RemoteTrack> tracks, {String? playlist, String? cover}) {
     final added = tracks.map(DownloadJob.new).toList();
     jobs.addAll(added);
     _round.addAll(added);
-    if (playlist != null && playlist.trim().isNotEmpty) _batches.add(_Batch(playlist.trim(), added));
+    if (playlist != null && playlist.trim().isNotEmpty) _batches.add(_Batch(playlist.trim(), added, cover));
     notifyListeners();
     _pump();
   }
@@ -583,6 +586,20 @@ class Downloads extends ChangeNotifier {
     _makePlaylists();
   }
 
+  /// Keeps the source playlist's picture as the new playlist's cover.
+  Future<void> _saveCover(Playlist p, String url) async {
+    try {
+      final files = await Native.filesDir();
+      if (files == null) return;
+      final f = File('$files/covers/${p.id}-${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(await Http.bytes(Uri.parse(url)));
+      playlists.setCover(p, path: f.path);
+    } on Object catch (e) {
+      CrashLog.note('Playlist cover not saved: $e');
+    }
+  }
+
   /// Batches whose songs have all finished become playlists, in their order.
   void _makePlaylists() {
     for (final b in [..._batches]) {
@@ -599,7 +616,10 @@ class Downloads extends ChangeNotifier {
       _batches.remove(b);
       if (songs.isEmpty) continue;
       final existing = playlists.all.where((p) => p.name == b.playlist).firstOrNull;
-      playlists.add(existing ?? playlists.create(b.playlist), songs);
+      final p = existing ?? playlists.create(b.playlist);
+      playlists.add(p, songs);
+      final cover = b.cover;
+      if (cover != null && p.coverPath == null && p.coverSongId == null) unawaited(_saveCover(p, cover));
     }
   }
 }

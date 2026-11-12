@@ -17,7 +17,26 @@ class CollectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
-    final c = collection;
+    // A playlist follows its changes (a song removed, a new cover).
+    if (collection.kind == CollectionKind.playlist) {
+      return ListenableBuilder(
+        listenable: scope.playlists,
+        builder: (context, _) {
+          final live = scope.playlists
+              .collections(scope.library.byId)
+              .where((x) => x.key == collection.key)
+              .firstOrNull;
+          // Deleted while open: leave.
+          if (live == null) return const SizedBox.shrink();
+          return _build(context, live);
+        },
+      );
+    }
+    return _build(context, collection);
+  }
+
+  Widget _build(BuildContext context, Collection c) {
+    final scope = AppScope.of(context);
     final wide = MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
     final isAlbum = c.kind == CollectionKind.album;
     final albums = c.kind == CollectionKind.artist ? scope.library.albumsBy(c.title) : const <Collection>[];
@@ -119,6 +138,7 @@ class _Header extends StatelessWidget {
                     albumId: c.artAlbumId,
                     size: size,
                     radius: c.kind == CollectionKind.artist ? size / 2 : null,
+                    file: c.coverPath,
                   ),
           ),
           const SizedBox(height: 16),

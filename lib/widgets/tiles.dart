@@ -215,7 +215,7 @@ class CollectionTile extends StatelessWidget {
                     dimension: size,
                     child: Icon(Icons.folder_rounded, size: size * 0.7, color: cs.primary),
                   )
-                : Art(albumId: item.artAlbumId, size: size, radius: round ? size / 2 : null),
+                : Art(albumId: item.artAlbumId, size: size, radius: round ? size / 2 : null, file: item.coverPath),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -277,6 +277,7 @@ class CollectionCard extends StatelessWidget {
                         albumId: item.artAlbumId,
                         size: c.maxWidth,
                         radius: round ? c.maxWidth / 2 : null,
+                        file: item.coverPath,
                       ),
                     ),
               const SizedBox(height: 8),
@@ -325,7 +326,7 @@ class BigCard extends StatelessWidget {
                 bottom: -box.maxHeight * 0.18,
                 child: Transform.rotate(
                   angle: 0.35,
-                  child: Art(albumId: item.artAlbumId, size: box.maxHeight * 0.9),
+                  child: Art(albumId: item.artAlbumId, size: box.maxHeight * 0.9, file: item.coverPath),
                 ),
               ),
               Padding(

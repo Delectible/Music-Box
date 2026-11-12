@@ -47,7 +47,10 @@ class Art extends StatelessWidget {
   final ArtShape? shape;
   final double? radius;
 
-  const Art({super.key, required this.albumId, required this.size, this.shape, this.radius});
+  /// A picture file shown instead of the album's (a playlist cover).
+  final String? file;
+
+  const Art({super.key, required this.albumId, required this.size, this.shape, this.radius, this.file});
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +60,21 @@ class Art extends StatelessWidget {
         : artRadius(shape ?? scope.settings.artShape, size);
     final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
     final bucket = px <= 160 ? 160 : (px <= 400 ? 400 : 800);
+    final own = file;
+    if (own != null) {
+      return ClipRRect(
+        borderRadius: r,
+        child: Image.file(
+          File(own),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          cacheWidth: bucket,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _Placeholder(albumId: albumId, size: size),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: r,
       child: SizedBox.square(

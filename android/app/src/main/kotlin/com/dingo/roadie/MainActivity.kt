@@ -36,6 +36,7 @@ class MainActivity : AudioServiceActivity() {
     private var pending: MethodChannel.Result? = null
     private var pendingRecord: MethodChannel.Result? = null
     private var pendingStorage: MethodChannel.Result? = null
+    private var pendingImage: Pair<MethodChannel.Result, String>? = null
     private val viz = VizStream()
     private val js by lazy { JsRunner(this) }
     private val pages by lazy { PageRunner(this) }
@@ -176,6 +177,17 @@ class MainActivity : AudioServiceActivity() {
                     result,
                 )
                 "cookies" -> result.success(pages.cookies(call.argument<String>("url") ?: ""))
+                // Android's own picker for an image; copied to [dest] (a playlist cover).
+                "pickImage" -> {
+                    pendingImage?.first?.success(null)
+                    pendingImage = result to (call.argument<String>("dest") ?: "")
+                    try {
+                        startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), 9)
+                    } catch (e: Exception) {
+                        pendingImage = null
+                        result.success(null)
+                    }
+                }
                 "jsInit" -> js.init(call.argument<String>("script") ?: "", result)
                 "jsEval" -> js.eval(call.argument<String>("code") ?: "null", result)
                 "immersive" -> {
@@ -249,6 +261,22 @@ class MainActivity : AudioServiceActivity() {
         super.onWindowFocusChanged(hasFocus)
         // Android shows the bars again after dialogs, the keyboard or app switching.
         if (hasFocus) applyImmersive()
+    }
+
+    @Deprecated("Still the simplest way from a FlutterActivity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 9) return
+        val (result, dest) = pendingImage ?: return
+        pendingImage = null
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null || dest.isEmpty()) return result.success(null)
+        background(result) {
+            val out = File(dest)
+            out.parentFile?.mkdirs()
+            contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { input.copyTo(it) } }
+            if (out.exists() && out.length() > 0) dest else null
+        }
     }
 
     override fun onResume() {

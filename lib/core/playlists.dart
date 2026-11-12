@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,18 +12,30 @@ class Playlist {
   final List<int> songIds;
   final DateTime created;
 
-  Playlist(this.id, this.name, this.songIds, this.created);
+  /// Its own cover: an image file (from the playlist it was downloaded from,
+  /// or picked), or one of its songs' covers. Neither: the first song's.
+  String? coverPath;
+  int? coverSongId;
+
+  Playlist(this.id, this.name, this.songIds, this.created, {this.coverPath, this.coverSongId});
 
   Map<String, Object> toJson() => {
     'id': id,
     'name': name,
     'songs': songIds,
     'created': created.millisecondsSinceEpoch,
+    'coverPath': ?coverPath,
+    'coverSong': ?coverSongId,
   };
 
-  static Playlist fromJson(Map<String, Object?> m) => Playlist(m['id']! as String, m['name']! as String, [
-    for (final n in m['songs']! as List<Object?>) (n! as num).toInt(),
-  ], DateTime.fromMillisecondsSinceEpoch((m['created']! as num).toInt()));
+  static Playlist fromJson(Map<String, Object?> m) => Playlist(
+    m['id']! as String,
+    m['name']! as String,
+    [for (final n in m['songs']! as List<Object?>) (n! as num).toInt()],
+    DateTime.fromMillisecondsSinceEpoch((m['created']! as num).toInt()),
+    coverPath: m['coverPath'] as String?,
+    coverSongId: (m['coverSong'] as num?)?.toInt(),
+  );
 }
 
 /// The app's own playlists, plus Favourites.
@@ -82,6 +95,22 @@ class Playlists extends ChangeNotifier {
     _save();
   }
 
+  /// A picture file or a song's cover as the playlist's cover; neither: automatic.
+  void setCover(Playlist p, {String? path, int? songId}) {
+    final old = p.coverPath;
+    if (old != null && old != path && old.contains('/covers/')) {
+      try {
+        File(old).deleteSync();
+      } on Object {
+        // Already gone.
+      }
+    }
+    p
+      ..coverPath = path
+      ..coverSongId = songId;
+    _save();
+  }
+
   void rename(Playlist p, String name) {
     p.name = name;
     _save();
@@ -97,13 +126,15 @@ class Playlists extends ChangeNotifier {
     for (final p in all)
       () {
         final songs = [for (final id in p.songIds) ?byId[id]];
+        final coverSong = p.coverSongId == null ? null : byId[p.coverSongId];
         return Collection(
           kind: CollectionKind.playlist,
           key: p.id,
           title: p.name,
           subtitle: '${songs.length} ${songs.length == 1 ? 'song' : 'songs'}',
           songs: songs,
-          artAlbumId: songs.isEmpty ? -1 : songs.first.albumId,
+          artAlbumId: coverSong?.albumId ?? (songs.isEmpty ? -1 : songs.first.albumId),
+          coverPath: p.coverPath != null && File(p.coverPath!).existsSync() ? p.coverPath : null,
         );
       }(),
   ];

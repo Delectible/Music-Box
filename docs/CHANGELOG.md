@@ -187,6 +187,12 @@
    back upright during the flight (no snap at the end), eases from round
    to the mini player's square, and the spindle hole travels with it and
    fades. (0.4.1)
+61. Playlist covers: a playlist downloaded from Spotify / YouTube /
+   SoundCloud keeps that playlist's picture; ⋮ > Change cover… picks one
+   of its songs' covers, a picture on the device (Android's picker, copied
+   into Roadie), or back to automatic (the first song's). (0.4.2)
+62. Fix: the − next to a song in a playlist removed it, but the screen
+   didn't update; the playlist screen now follows changes. (0.4.2)
 
 ## Ideas
 

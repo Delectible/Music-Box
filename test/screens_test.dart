@@ -25,6 +25,7 @@ import 'package:roadie/screens/sources_screen.dart';
 import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
+import 'package:roadie/widgets/menus.dart' show openCollection;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'shots.dart';
@@ -529,5 +530,35 @@ void main() {
       d.jobs.clear();
       await tester.pumpWidget(const SizedBox());
     }
+  });
+
+  testWidgets('playlist: minus removes the song on screen; covers', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final songs = a.library.albums[0].songs.take(3).toList();
+    final p = a.playlists.create('Road trip');
+    a.playlists.add(p, songs);
+    final ctx = tester.element(find.byType(Navigator).first);
+    final c = a.playlists.collections(a.library.byId).firstWhere((x) => x.key == p.id);
+    openCollection(ctx, c);
+    await _settle(tester);
+    expect(find.byTooltip('Remove from playlist'), findsNWidgets(3));
+    await tester.tap(find.byTooltip('Remove from playlist').first);
+    await _settle(tester);
+    expect(find.byTooltip('Remove from playlist'), findsNWidgets(2)); // gone from the screen too
+    expect(p.songIds, isNot(contains(songs.first.id)));
+    // A song's cover as the playlist's cover, kept when saved and loaded.
+    a.playlists.setCover(p, songId: songs.last.id);
+    expect(
+      a.playlists.collections(a.library.byId).firstWhere((x) => x.key == p.id).artAlbumId,
+      songs.last.albumId,
+    );
+    final again = Playlists(await SharedPreferences.getInstance());
+    expect(again.all.firstWhere((x) => x.id == p.id).coverSongId, songs.last.id);
+    a.playlists.setCover(p);
+    expect(p.coverSongId, isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 }

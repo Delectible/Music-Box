@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
+import '../core/native.dart';
+import '../core/playlists.dart';
 import '../core/scope.dart';
 import '../screens/collection_screen.dart';
 import '../screens/podcast_screen.dart';
@@ -98,7 +100,7 @@ Future<void> showCollectionMenu(BuildContext context, Collection c) {
   return _sheet(
     context,
     header: ListTile(
-      leading: Art(albumId: c.artAlbumId, size: 52),
+      leading: Art(albumId: c.artAlbumId, size: 52, file: c.coverPath),
       title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
     ),
@@ -139,6 +141,7 @@ Future<void> showCollectionMenu(BuildContext context, Collection c) {
           'Rename',
           () => _renamePlaylist(context, playlist.name, (n) => scope.playlists.rename(playlist, n)),
         ),
+        (Icons.image_rounded, 'Change cover…', () => changeCover(context, playlist, c.songs)),
         (Icons.delete_outline_rounded, 'Delete playlist', () => scope.playlists.delete(playlist)),
       ],
     ],
@@ -237,4 +240,81 @@ Future<void> _renamePlaylist(BuildContext context, String initial, void Function
   );
   ctrl.dispose();
   if (name != null && name.trim().isNotEmpty) done(name.trim());
+}
+
+/// A playlist's cover: one of its songs' covers, a picture on the device, or
+/// back to automatic (the first song's).
+Future<void> changeCover(BuildContext context, Playlist playlist, List<Song> songs) async {
+  final scope = AppScope.of(context);
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    constraints: const BoxConstraints(maxWidth: 640),
+    builder: (sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.album_rounded),
+            title: const Text('Use a song\'s cover'),
+            minTileHeight: 60,
+            enabled: songs.isNotEmpty,
+            onTap: () => Navigator.pop(sheet, 'song'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Choose a picture on this device'),
+            minTileHeight: 60,
+            onTap: () => Navigator.pop(sheet, 'image'),
+          ),
+          if (playlist.coverPath != null || playlist.coverSongId != null)
+            ListTile(
+              leading: const Icon(Icons.restart_alt_rounded),
+              title: const Text('Automatic (the first song\'s cover)'),
+              minTileHeight: 60,
+              onTap: () => Navigator.pop(sheet, 'auto'),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (!context.mounted || choice == null) return;
+  switch (choice) {
+    case 'auto':
+      scope.playlists.setCover(playlist);
+    case 'image':
+      final files = await Native.filesDir();
+      if (files == null) return;
+      final picked = await Native.pickImage(
+        '$files/covers/${playlist.id}-${DateTime.now().millisecondsSinceEpoch}.img',
+      );
+      if (picked != null) scope.playlists.setCover(playlist, path: picked);
+    case 'song':
+      final song = await showModalBottomSheet<Song>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        constraints: const BoxConstraints(maxWidth: 640),
+        builder: (sheet) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final s in {for (final s in songs) s.albumId: s}.values)
+                ListTile(
+                  leading: Art(albumId: s.albumId, size: 52),
+                  title: Text(
+                    s.album.isEmpty ? s.title : s.album,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(s.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  minTileHeight: 68,
+                  onTap: () => Navigator.pop(sheet, s),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (song != null) scope.playlists.setCover(playlist, songId: song.id);
+  }
 }

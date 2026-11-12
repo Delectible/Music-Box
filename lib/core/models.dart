@@ -94,6 +94,9 @@ class Collection {
   /// Album id whose art stands for the collection.
   final int artAlbumId;
 
+  /// A picture of its own (a playlist's cover), shown instead.
+  final String? coverPath;
+
   const Collection({
     required this.kind,
     required this.key,
@@ -101,6 +104,7 @@ class Collection {
     required this.subtitle,
     required this.songs,
     required this.artAlbumId,
+    this.coverPath,
   });
 
   Duration get duration => songs.fold(Duration.zero, (a, s) => a + s.duration);

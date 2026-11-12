@@ -15,6 +15,9 @@ class Native {
 
   static Future<String?> filesDir() => _call<String>('filesDir');
 
+  /// Android's picker for an image, copied to [dest]; null when cancelled.
+  static Future<String?> pickImage(String dest) => _call<String>('pickImage', {'dest': dest});
+
   /// Android version, memory (MB), CPU types, WebView version; empty in tests.
   static Future<Map<String, Object?>> device() async =>
       (await _call<Map<Object?, Object?>>('device'))?.cast<String, Object?>() ?? const {};
