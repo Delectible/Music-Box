@@ -2,7 +2,7 @@
 
 ## Setup
 
-Flutter stable 3.47+. `flutter create --org com.dingo --project-name roadie
+Flutter 3.47.9 (pinned in the build workflow; move both together). `flutter create --org com.dingo --project-name roadie
 --platforms android .` fills in the platform boilerplate we don't keep,
 then `flutter pub get`.
 

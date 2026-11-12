@@ -10,6 +10,8 @@ permissions:
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
+# Flutter is pinned (flutter-version below): a new stable can deprecate APIs
+# and change bundled packages, breaking the build until the app is updated.
 env:
   ORG: com.dingo          # app id com.dingo.roadie
   APP: roadie
@@ -21,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.47.9, cache: true }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -33,7 +35,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.47.9, cache: true }
       # flutter create fills in the Android boilerplate we don't keep. It
       # re-resolves dependencies and ignores pubspec.lock, so put the locked
       # versions back.

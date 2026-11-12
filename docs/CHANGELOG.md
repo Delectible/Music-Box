@@ -104,7 +104,8 @@
    stream challenges are solved with yt-dlp's solver (hash-checked)
    running in a hidden WebView, which opens the web player and TV clients;
    VR, web, TV, Android and mobile web are tried in turn; each refusal is
-   logged in Problem reports.)
+   logged in Problem reports. Builds now pin Flutter 3.47.9: a new
+   stable release broke the build.)
 
 ## Ideas
 
