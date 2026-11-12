@@ -115,8 +115,8 @@ class Http {
   }
 
   /// Looks at the start of [uri] without downloading it.
-  static Future<LinkInfo> probe(Uri uri) async {
-    final res = await _get(uri, headers: {'Range': 'bytes=0-511'});
+  static Future<LinkInfo> probe(Uri uri, {Map<String, String>? headers}) async {
+    final res = await _get(uri, headers: {...?headers, 'Range': 'bytes=0-511'});
     final type = res.headers.contentType?.mimeType ?? res.headers.value('content-type') ?? '';
     final cd = res.headers.value('content-disposition') ?? '';
     final name = RegExp(
@@ -215,19 +215,20 @@ class Http {
     File file, {
     void Function(double)? progress,
     bool Function()? cancelled,
+    Map<String, String>? headers,
   }) async {
     final part = File('${file.path}.part');
     await part.parent.create(recursive: true);
     var have = await part.exists() ? await part.length() : 0;
     HttpClientResponse res;
     try {
-      res = await _get(uri, headers: have > 0 ? {'Range': 'bytes=$have-'} : null);
+      res = await _get(uri, headers: {...?headers, if (have > 0) 'Range': 'bytes=$have-'});
     } on HttpFailure catch (e) {
       if (e.status != 416) rethrow;
       // The leftover piece doesn't fit this file any more: start over.
       await part.delete();
       have = 0;
-      res = await _get(uri);
+      res = await _get(uri, headers: headers);
     }
     final resumed = have > 0 && res.statusCode == 206;
     if (!resumed) have = 0;

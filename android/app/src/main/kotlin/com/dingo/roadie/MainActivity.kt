@@ -38,6 +38,7 @@ class MainActivity : AudioServiceActivity() {
     private var pendingStorage: MethodChannel.Result? = null
     private val viz = VizStream()
     private val js by lazy { JsRunner(this) }
+    private val pages by lazy { PageRunner(this) }
 
     private fun canWrite(): Boolean =
         if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
@@ -162,6 +163,19 @@ class MainActivity : AudioServiceActivity() {
                         true
                     }
                 }
+                // The hidden browser for taught sites (PageRunner.kt).
+                "pageLoad" -> pages.load(
+                    call.argument<String>("url") ?: "",
+                    call.argument<Number>("ms")?.toLong() ?: 30000,
+                    result,
+                )
+                "pageEval" -> pages.eval(call.argument<String>("code") ?: "null", result)
+                "pageClick" -> pages.click(
+                    call.argument<String>("code") ?: "",
+                    call.argument<Number>("ms")?.toLong() ?: 20000,
+                    result,
+                )
+                "cookies" -> result.success(pages.cookies(call.argument<String>("url") ?: ""))
                 "jsInit" -> js.init(call.argument<String>("script") ?: "", result)
                 "jsEval" -> js.eval(call.argument<String>("code") ?: "null", result)
                 "immersive" -> {
@@ -247,6 +261,7 @@ class MainActivity : AudioServiceActivity() {
     override fun onDestroy() {
         viz.stop()
         js.dispose()
+        pages.dispose()
         super.onDestroy()
     }
 

@@ -167,6 +167,21 @@
 57. Added sites and links on plain http:// (no https) work: the browser
    showed net::ERR_CLEARTEXT_NOT_PERMITTED (manifest
    usesCleartextTraffic). Typed addresses still try https first. (0.3.9)
+58. Teach Roadie a site (browser > ⋮ > Teach Roadie to download from this
+   site): on its search results, tap a song, then the download button(s)
+   until the file comes. Roadie keeps those taps as a recipe (link address
+   patterns, button words, where they sit; `SiteRecipe`) and from then on
+   searching that site in Get music lists its songs like any source; a
+   preview or download opens the song's page in a hidden browser
+   (`PageRunner.kt`, sharing the browser's cookies / sign-ins), presses
+   the taught buttons and catches the file (a music link, a download, or
+   an address that serves audio, checked by its first bytes). Falls back to
+   any music file on the page, then to "See on site". ⋮ > Forget what
+   Roadie learned. Links that download without ".mp3" in the address now
+   work in the browser too. Tested on Android 10 against a local test site
+   with a JavaScript download button. (0.4.0)
+59. Fix: adding a site listed it twice in Get music (two "Browse" buttons).
+   (0.4.0)
 
 ## Ideas
 

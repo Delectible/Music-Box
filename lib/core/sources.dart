@@ -7,6 +7,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 
 import 'crash_log.dart';
 import 'http.dart';
+import 'recipe.dart';
 import 'yt_solver.dart';
 import 'ytdlp.dart';
 
@@ -54,6 +55,10 @@ class RemoteTrack {
   /// The real stream to preview, when [preview] / [url] is only a page.
   final Future<Uri> Function()? resolvePreview;
 
+  /// [url] is a page on a taught site: this presses the taught buttons and
+  /// answers the music file's address (at preview / download time).
+  final Future<Uri> Function()? resolveUrl;
+
   /// Only the song's details came from [url] (Spotify, YouTube): the audio
   /// is found on SoundCloud at download time (`SongMatcher`), and these tags
   /// win over the upload's.
@@ -78,7 +83,25 @@ class RemoteTrack {
     this.viaYtdlp = false,
     this.resolvePreview,
     this.findOnSoundCloud = false,
+    this.resolveUrl,
   });
+
+  /// The same song at its file's address (found by [resolveUrl]).
+  RemoteTrack withFile(Uri file, String ext) => RemoteTrack(
+    title: title,
+    url: file,
+    ext: ext,
+    artist: artist,
+    album: album,
+    albumArtist: albumArtist,
+    year: year,
+    genre: genre,
+    track: track,
+    length: length,
+    cover: cover,
+    quality: ext.toUpperCase(),
+    lookUp: lookUp,
+  );
 
   Uri get previewUrl => preview ?? url;
 }
@@ -527,17 +550,37 @@ class DirectLink extends MusicSource {
 /// opens its results in the browser; otherwise the browser opens [home].
 class CustomSite {
   final String id, name, home, search;
-  const CustomSite({required this.id, required this.name, required this.home, this.search = ''});
+
+  /// How to get songs from it, taught by the person (browser > Teach Roadie).
+  final SiteRecipe? recipe;
+  const CustomSite({required this.id, required this.name, required this.home, this.search = '', this.recipe});
+
+  bool get taught => recipe != null && search.contains('{q}');
+
+  CustomSite copyWith({String? search, SiteRecipe? recipe, bool forget = false}) => CustomSite(
+    id: id,
+    name: name,
+    home: home,
+    search: search ?? this.search,
+    recipe: forget ? null : (recipe ?? this.recipe),
+  );
 
   Uri searchUri(String q) => Uri.parse(search.replaceAll('{q}', Uri.encodeQueryComponent(q)));
   Uri get homeUri => Uri.parse(home);
 
-  Map<String, String> toJson() => {'id': id, 'name': name, 'home': home, 'search': search};
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'home': home,
+    'search': search,
+    if (recipe != null) 'recipe': recipe!.toJson(),
+  };
   factory CustomSite.fromJson(Map<String, Object?> m) => CustomSite(
     id: '${m['id']}',
     name: '${m['name']}',
     home: '${m['home']}',
     search: '${m['search'] ?? ''}',
+    recipe: m['recipe'] is Map ? SiteRecipe.fromJson((m['recipe']! as Map).cast<String, Object?>()) : null,
   );
 
   static List<CustomSite> decode(String? s) {
@@ -1210,4 +1253,24 @@ class Spotify extends MusicSource {
 
   @override
   Future<List<RemoteTrack>> tracks(RemoteItem item) async => (item.data! as List).cast<RemoteTrack>();
+}
+
+/// A site the person taught Roadie: searched in the background like any
+/// source, the songs found by repeating their taps.
+class TaughtSite extends MusicSource {
+  final CustomSite site;
+  TaughtSite(this.site);
+
+  @override
+  String get id => site.id;
+  @override
+  String get name => site.name;
+  @override
+  String get blurb => 'Taught: Roadie repeats your steps to get the music';
+
+  @override
+  Future<List<RemoteItem>> search(String query) => RecipeRunner.search(site, query);
+
+  @override
+  Future<List<RemoteTrack>> tracks(RemoteItem item) async => [item.data! as RemoteTrack];
 }

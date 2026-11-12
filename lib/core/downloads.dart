@@ -10,6 +10,7 @@ import 'matcher.dart';
 import 'metadata.dart';
 import 'native.dart';
 import 'playlists.dart';
+import 'recipe.dart';
 import 'settings.dart';
 import 'sources.dart';
 import 'tag_fixer.dart';
@@ -272,8 +273,29 @@ class Downloads extends ChangeNotifier {
   static const _audioExts = ['mp3', 'm4a', 'flac', 'wav', 'opus', 'ogg', 'aiff', 'aif', 'aac'];
 
   Future<void> _run(DownloadJob j) async {
-    final t = j.track;
+    var t = j.track;
+    Map<String, String>? cookies;
     try {
+      // A taught site: press its buttons first to find the file.
+      final find = t.resolveUrl;
+      if (find != null) {
+        j.note = 'Opening ${t.url.host}…';
+        notifyListeners();
+        final file = await find();
+        final c = await RecipeRunner.cookies(file);
+        cookies = c == null || c.isEmpty ? null : {'Cookie': c};
+        var ext = RegExp(r'\.([a-z0-9]{2,4})$').firstMatch(file.path.toLowerCase())?.group(1) ?? '';
+        if (!DirectLink.audioExts.contains(ext)) {
+          try {
+            final name = (await Http.probe(file, headers: cookies)).fileName ?? '';
+            ext = RegExp(r'\.([a-z0-9]{2,4})$').firstMatch(name.toLowerCase())?.group(1) ?? '';
+          } on Object {
+            ext = '';
+          }
+        }
+        t = t.withFile(file, DirectLink.audioExts.contains(ext) ? ext : 'mp3');
+        j.note = null;
+      }
       var file = File(pathFor(await folder(), t));
       // yt-dlp picks the file type: any type already there counts.
       if (t.viaYtdlp) {
@@ -321,8 +343,13 @@ class Downloads extends ChangeNotifier {
                     notifyListeners();
                   },
                 ))
-              : (({required void Function(double) progress}) =>
-                    Http.download(t.url, file, cancelled: () => j.cancelled, progress: progress));
+              : (({required void Function(double) progress}) => Http.download(
+                  t.url,
+                  file,
+                  cancelled: () => j.cancelled,
+                  progress: progress,
+                  headers: cookies,
+                ));
           await fetch(
             progress: (p) {
               j.progress = p;

@@ -228,17 +228,27 @@ class Settings extends ChangeNotifier {
     final saved = _p.getStringList('sourceOrder');
     final sites = (RegExp(r'"id":"([^"]+)"').allMatches(customSitesJson)).map((m) => m.group(1)!);
     if (saved == null) {
-      return ['soundcloud', 'archive', 'podcasts', 'youtube', 'jamendo', 'ccmixter', 'link', ...sites];
+      return {
+        'soundcloud',
+        'archive',
+        'podcasts',
+        'youtube',
+        'jamendo',
+        'ccmixter',
+        'link',
+        ...sites,
+      }.toList();
     }
     // Sources added in a later version go first, once (they can be removed).
     final known =
         _p.getStringList('sourcesKnown') ??
         const ['archive', 'youtube', 'podcasts', 'jamendo', 'ccmixter', 'link'];
-    return [
+    // Each once (adding a site used to list it twice).
+    return {
       for (final id in const ['soundcloud'])
         if (!known.contains(id) && !saved.contains(id)) id,
       ...saved,
-    ];
+    }.toList();
   }
 
   set sourceOrder(List<String> v) {
@@ -251,7 +261,7 @@ class Settings extends ChangeNotifier {
       'ccmixter',
       'link',
     ]);
-    _set('sourceOrder', v);
+    _set('sourceOrder', v.toSet().toList());
   }
 
   /// yt-dlp (SoundCloud's downloader): daily background update check, which

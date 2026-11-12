@@ -51,6 +51,12 @@ then `flutter pub get`.
 - `lib/core/matcher.dart` (`SongMatcher`): finds Spotify / YouTube songs
   (`RemoteTrack.findOnSoundCloud`) on SoundCloud. `Spotify` in
   sources.dart reads the public embed page's `__NEXT_DATA__`.
+- `lib/core/recipe.dart` + `PageRunner.kt`: taught sites. The browser
+  records taps (`teachJs`, channel RoadieTeach) into a `SiteRecipe` saved
+  on the `CustomSite`; `RecipeRunner` replays it in a hidden native WebView
+  (`pageLoad` / `pageEval` / `pageClick` / `cookies` on roadie/library).
+  `findJs` scores elements by address pattern, words and class signature;
+  it can be checked in Node with jsdom (see features_test, RECIPE_JS).
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
   feed (live, or made up when there's no permission / data) and 10 styles.
 - `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain

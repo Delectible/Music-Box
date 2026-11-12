@@ -117,7 +117,7 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
       _searched = q;
     });
     for (final t in ticked) {
-      final src = sources.where((x) => x.id == t).firstOrNull;
+      final src = sources.where((x) => x.id == t).firstOrNull ?? _taught(sites, t);
       final r = results[t]!;
       if (src == null) {
         r.items = const []; // an added site: opened from its card
@@ -301,6 +301,12 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
     );
   }
 
+  /// An added site Roadie was taught: searched like the built-in sources.
+  static MusicSource? _taught(List<CustomSite> sites, String id) {
+    final site = sites.where((x) => x.id == id).firstOrNull;
+    return site != null && site.taught ? TaughtSite(site) : null;
+  }
+
   Widget _body(BuildContext context, List<MusicSource> sources, List<CustomSite> sites, List<String> ticked) {
     final r = _results;
     final tt = Theme.of(context).textTheme;
@@ -339,8 +345,9 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
         final cols = (box.maxWidth / 210).floor().clamp(2, 8);
         final slivers = <Widget>[];
         for (final e in r.entries) {
-          final src = sources.where((x) => x.id == e.key).firstOrNull;
+          final src = sources.where((x) => x.id == e.key).firstOrNull ?? _taught(sites, e.key);
           final site = sites.where((x) => x.id == e.key).firstOrNull;
+          final browseOnly = site != null && !site.taught;
           final res = e.value;
           final name = src?.name ?? site?.name ?? e.key;
           slivers.add(
@@ -353,14 +360,14 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                     const SizedBox(width: 12),
                     if (res.loading)
                       const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2.5))
-                    else if (site == null && res.error == null)
+                    else if (!browseOnly && res.error == null)
                       Text('${res.items!.length} found', style: tt.bodyMedium),
                   ],
                 ),
               ),
             ),
           );
-          if (site != null) {
+          if (browseOnly) {
             slivers.add(
               SliverToBoxAdapter(
                 child: Padding(
@@ -418,6 +425,30 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
                   itemBuilder: (context, i) => _ItemCard(
                     item: res.items![i],
                     onTap: () => openRemoteItem(context, src!, res.items![i]),
+                  ),
+                ),
+              ),
+            );
+          }
+          // A taught site: its own results page is always one tap away.
+          if (site != null && site.taught && !res.loading) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                      onPressed: () => openBrowser(
+                        context,
+                        url: site.searchUri(_searched),
+                        siteName: site.name,
+                        site: site,
+                      ),
+                      icon: const Icon(Icons.open_in_browser_rounded),
+                      label: Text('See "$_searched" on ${site.name}'),
+                    ),
                   ),
                 ),
               ),
@@ -762,7 +793,9 @@ class _TrackRow extends StatelessWidget {
                 onPressed: () => pv.toggle(
                   url,
                   // Spotify / YouTube songs: hear the SoundCloud upload that would be saved.
-                  resolve: track.findOnSoundCloud ? () => SongMatcher.preview(track) : track.resolvePreview,
+                  resolve: track.findOnSoundCloud
+                      ? () => SongMatcher.preview(track)
+                      : (track.resolvePreview ?? track.resolveUrl),
                 ),
                 icon: on && pv.loading
                     ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))

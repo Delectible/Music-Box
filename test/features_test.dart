@@ -22,6 +22,7 @@ import 'package:roadie/core/quality.dart';
 import 'package:roadie/core/smart.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/core/matcher.dart';
+import 'package:roadie/core/recipe.dart';
 import 'package:roadie/core/ytdlp.dart';
 import 'package:roadie/screens/podcast_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -547,5 +548,68 @@ void main() {
     expect(Ytdlp.looksBroken('ERROR: [soundcloud] 1: This video is DRM protected'), isFalse);
     expect(Ytdlp.plugin, contains("plugin_name='roadie'"));
     expect(Ytdlp.plugin, contains("'Checking thumbnail extension'"));
+  });
+
+  test('taught sites: link patterns, titles, saved recipes', () {
+    final p = RegExp(hrefPattern('https://tunes.example/song/101/night-drive?ref=search'));
+    expect(p.hasMatch('https://tunes.example/song/202/harbour?ref=x'), isTrue);
+    expect(p.hasMatch('https://tunes.example/song/202/harbour'), isFalse); // ref= was there
+    expect(p.hasMatch('https://tunes.example/about'), isFalse);
+    expect(p.hasMatch('https://other.example/song/202/harbour?ref=x'), isFalse);
+    final dl = RegExp(hrefPattern('https://tunes.example/song/101/download'));
+    expect(dl.hasMatch('https://tunes.example/song/7/download'), isTrue);
+    expect(dl.hasMatch('https://tunes.example/song/7/comments'), isFalse);
+    expect(hrefPattern('javascript:void(0)'), '');
+    expect(hrefPattern(''), '');
+    expect(titleOf('Lumen Coast - Night Drive', ''), ('Lumen Coast', 'Night Drive'));
+    expect(titleOf('Download', 'https://x/files/night-drive.mp3'), ('', 'night drive'));
+    final r = SiteRecipe.fromTaps([
+      {
+        'href': 'https://tunes.example/song/101/night-drive',
+        'text': 'Night Drive',
+        'sig': 'a.title<li.result<ul',
+      },
+      {'href': '', 'text': ' Download  MP3 ', 'sig': 'button.btn.dl<div.box<main'},
+    ])!;
+    expect(r.steps.single.text, 'download mp3');
+    final site = CustomSite.fromJson(
+      (jsonDecode(
+                    CustomSite.encode([
+                      CustomSite(
+                        id: 's1',
+                        name: 'Tunes',
+                        home: 'https://tunes.example',
+                        search: 'https://tunes.example/search?q={q}',
+                        recipe: r,
+                      ),
+                    ]),
+                  )
+                  as List)
+              .first
+          as Map<String, Object?>,
+    );
+    expect(site.taught, isTrue);
+    expect(site.recipe!.result.sig, 'a.title<li.result<ul');
+    expect(site.copyWith(forget: true).taught, isFalse);
+    expect(CustomSite.fromJson({'id': 'x', 'name': 'n', 'home': 'h'}).recipe, isNull); // older saves
+  });
+
+  test('taught sites: in-page finder script (for the Node check)', () {
+    final dir = Platform.environment['RECIPE_JS'];
+    if (dir == null) return;
+    final result = StepSpec.fromTap({
+      'href': 'https://tunes.example/song/101/night-drive',
+      'text': 'x',
+      'sig': 'a.title<li.result<ul',
+    });
+    final button = StepSpec.fromTap({
+      'href': '',
+      'text': 'Download MP3',
+      'sig': 'button.btn.dl<div.box<main',
+    });
+    File('$dir/find_all.js').writeAsStringSync(findJs(result, 'all'));
+    File('$dir/find_best.js').writeAsStringSync(findJs(button, 'best'));
+    File('$dir/teach.js').writeAsStringSync(teachJs);
+    File('$dir/scan.js').writeAsStringSync(scanJs);
   });
 }
