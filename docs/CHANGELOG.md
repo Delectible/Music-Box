@@ -182,6 +182,11 @@
    with a JavaScript download button. (0.4.0)
 59. Fix: adding a site listed it twice in Get music (two "Browse" buttons).
    (0.4.0)
+60. Full screen player open / close: the page slides on the same curve as
+   the cover, so they arrive together; the spinning record's label turns
+   back upright during the flight (no snap at the end), eases from round
+   to the mini player's square, and the spindle hole travels with it and
+   fades. (0.4.1)
 
 ## Ideas
 

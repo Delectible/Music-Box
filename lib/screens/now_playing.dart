@@ -21,11 +21,16 @@ import 'visualizer_screen.dart';
 /// Opens the full screen player: slides up from the mini player.
 Route<void> nowPlayingRoute(Settings s) => PageRouteBuilder<void>(
   transitionDuration: motion(s, 420),
-  reverseTransitionDuration: motion(s, 320),
+  reverseTransitionDuration: motion(s, 420),
   opaque: false,
   pageBuilder: (_, _, _) => const NowPlaying(),
   transitionsBuilder: (_, a, _, child) {
-    final curve = CurvedAnimation(parent: a, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+    // The same curve the cover flies on (Hero), so page and cover move together.
+    final curve = CurvedAnimation(
+      parent: a,
+      curve: Curves.fastOutSlowIn,
+      reverseCurve: Curves.fastOutSlowIn.flipped,
+    );
     return SlideTransition(
       position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(curve),
       child: child,
@@ -793,6 +798,51 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
     super.dispose();
   }
 
+  /// The cover as the record's label, with the spindle hole (which shows by [hole]).
+  Widget _label(double size, double hole, {double? radius}) => SizedBox.square(
+    dimension: size * 0.42,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Art(albumId: widget.song.albumId, size: size * 0.42, radius: radius ?? size * 0.21),
+        Opacity(
+          opacity: hole.clamp(0, 1),
+          child: Container(
+            width: size * 0.035,
+            height: size * 0.035,
+            decoration: const BoxDecoration(color: Color(0xFF0D0D0F), shape: BoxShape.circle),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// The label flying to / from the mini player: it turns back upright, its
+  /// round shape eases to the mini player's square and the hole fades, all
+  /// along the way (rather than jumping at the end).
+  Widget _shuttle(
+    BuildContext _,
+    Animation<double> a,
+    HeroFlightDirection dir,
+    BuildContext from,
+    BuildContext to,
+  ) {
+    final turns = _spin.value;
+    final size = widget.size;
+    return AnimatedBuilder(
+      animation: a,
+      builder: (context, _) {
+        final t = Curves.easeInOut.transform(a.value.clamp(0, 1));
+        return FittedBox(
+          child: Transform.rotate(
+            angle: turns * 2 * pi * t,
+            child: _label(size, t, radius: size * 0.42 * (0.12 + 0.38 * t)),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
@@ -825,18 +875,9 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
                   direction: widget.direction,
                   child: Hero(
                     tag: 'now-art',
-                    flightShuttleBuilder: nowArtShuttle,
-                    child: RotationTransition(
-                      turns: _spin,
-                      child: Art(albumId: widget.song.albumId, size: size * 0.42, radius: size * 0.21),
-                    ),
+                    flightShuttleBuilder: _shuttle,
+                    child: RotationTransition(turns: _spin, child: _label(size, 1)),
                   ),
-                ),
-                // Spindle.
-                Container(
-                  width: size * 0.035,
-                  height: size * 0.035,
-                  decoration: const BoxDecoration(color: Color(0xFF0D0D0F), shape: BoxShape.circle),
                 ),
               ],
             ),
