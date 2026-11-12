@@ -11,6 +11,7 @@ import '../core/scope.dart';
 import '../core/settings.dart';
 import '../core/sources.dart';
 import '../core/tag_fixer.dart';
+import '../core/ytdlp.dart';
 import 'browser_screen.dart';
 import 'close_matches_screen.dart';
 import 'folders_screen.dart';
@@ -130,7 +131,11 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
             .search(q)
             .then((items) => r.items = items)
             .catchError((Object e, StackTrace st) {
-              CrashLog.record(e, st, where: 'search ${src.id}');
+              CrashLog.record(
+                e is YtdlpFailure ? '${e.message}\n${e.detail}' : e,
+                st,
+                where: 'search ${src.id}',
+              );
               r.error = friendlyError(e);
               return const <RemoteItem>[];
             })

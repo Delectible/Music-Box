@@ -23,7 +23,7 @@
 
     <application
         android:label="Roadie"
-        android:name="${applicationName}"
+        android:name=".RoadieApp"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:requestLegacyExternalStorage="true"
@@ -73,6 +73,18 @@
         </receiver>
 
         <meta-data android:name="flutterEmbedding" android:value="2" />
+
+        <!-- WorkManager starts on first use (RoadieApp), not at launch. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
     <queries>
         <intent>

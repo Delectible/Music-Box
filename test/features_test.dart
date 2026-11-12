@@ -516,4 +516,24 @@ void main() {
     expect(cover, lessThan(SongMatcher.threshold));
     expect(cover, greaterThanOrEqualTo(SongMatcher.closeFrom));
   });
+
+  test('yt-dlp: offline and blocked networks are not "SoundCloud changed"', () {
+    const refused =
+        "ERROR: x: Unable to download API page: ('Unable to connect to proxy', NewConnectionError(\"Failed to establish a new connection: [Errno 111] Connection refused\")); please report this issue on https://github.com/yt-dlp/yt-dlp/issues";
+    const dns =
+        "ERROR: [soundcloud] Unable to download webpage: Failed to resolve 'soundcloud.com' ([Errno 7] No address associated with hostname); please report this issue";
+    const portal =
+        'ERROR: x: Unable to download API page: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1035); please report this issue';
+    for (final e in [refused, dns, portal]) {
+      expect(Ytdlp.looksBroken(e), isFalse, reason: e);
+    }
+    expect(Ytdlp.friendly(refused), Ytdlp.noInternet);
+    expect(Ytdlp.friendly(dns), Ytdlp.noInternet);
+    expect(Ytdlp.friendly(portal), Ytdlp.blockedNetwork);
+    // A real site change still heals.
+    expect(
+      Ytdlp.looksBroken('ERROR: [soundcloud] Unable to extract client id; please report this issue'),
+      isTrue,
+    );
+  });
 }

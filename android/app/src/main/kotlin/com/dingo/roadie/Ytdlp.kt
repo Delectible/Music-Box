@@ -103,7 +103,7 @@ object Ytdlp {
             }
             "cancel" -> result.success(YoutubeDL.getInstance().destroyProcessById(call.argument<String>("id") ?: ""))
             // Background update check (daily, on any network); off when disabled.
-            "schedule" -> {
+            "schedule" -> try {
                 val wm = WorkManager.getInstance(context.applicationContext)
                 if (call.argument<Boolean>("enabled") == true) {
                     val req = PeriodicWorkRequestBuilder<UpdateWorker>(1, TimeUnit.DAYS)
@@ -115,6 +115,9 @@ object Ytdlp {
                     wm.cancelUniqueWork("ytdlp-update")
                 }
                 result.success(null)
+            } catch (e: Throwable) {
+                // Only the background check is off; everything else works.
+                result.error("schedule", e.message ?: e.toString(), null)
             }
             else -> result.notImplemented()
         }

@@ -62,6 +62,9 @@ class Ytdlp {
   ];
 
   static const noInternet = 'No internet connection (or it dropped)';
+  static const blockedNetwork =
+      'This network is blocking secure connections. If it\'s a Wi-Fi with a sign-in page, sign in first, '
+      'or use another connection';
   static const badClock =
       'This device\'s date or time is wrong, so secure sites are refused. Set the date and time (or turn on automatic time)';
 
@@ -197,6 +200,7 @@ class Ytdlp {
     final e = err.toLowerCase();
     if (_isNetwork(e) ||
         _isClock(e) ||
+        _isBlocked(e) ||
         e.contains('404') ||
         e.contains('not available in your country') ||
         e.contains('geo')) {
@@ -225,7 +229,18 @@ class Ytdlp {
       e.contains('temporary failure in name resolution') ||
       e.contains('read timed out') ||
       e.contains('remote end closed connection') ||
-      e.contains('incompleteread');
+      e.contains('incompleteread') ||
+      e.contains('failed to establish a new connection') ||
+      e.contains('failed to resolve') ||
+      e.contains('max retries exceeded') ||
+      e.contains('connection broken') ||
+      e.contains('unable to connect to proxy') ||
+      e.contains('eof occurred in violation') ||
+      RegExp(r'errno (7|101|110|111|113|-2|-3)\b').hasMatch(e);
+
+  /// A certificate the device doesn't trust, not from a wrong clock: a Wi-Fi
+  /// sign-in page or a network that inspects traffic.
+  static bool _isBlocked(String e) => e.contains('certificate verify failed') && !_isClock(e);
 
   static bool _isClock(String e) =>
       e.contains('certificate is not yet valid') ||
@@ -242,6 +257,7 @@ class Ytdlp {
           : removableReadOnly;
     }
     if (_isNetwork(e)) return noInternet;
+    if (_isBlocked(e)) return blockedNetwork;
     if (e.contains('requested format is not available') || e.contains('preview')) {
       return 'SoundCloud only offers a 30-second preview of this track (it\'s for SoundCloud Go+ subscribers)';
     }

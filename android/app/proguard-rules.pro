@@ -13,3 +13,11 @@
 -dontwarn java.beans.**
 -keep class org.apache.commons.** { *; }
 -dontwarn org.apache.commons.**
+
+# WorkManager (daily yt-dlp update check) starts at app launch and opens its
+# Room database by reflection; without these R8 strips what it needs and the
+# app closes on start ("Failed to create an instance of ...WorkDatabase").
+-keep class * extends androidx.room.RoomDatabase { *; }
+-keep class androidx.work.** { *; }
+-keep class androidx.room.** { *; }
+-keep class * extends androidx.work.ListenableWorker { <init>(...); }

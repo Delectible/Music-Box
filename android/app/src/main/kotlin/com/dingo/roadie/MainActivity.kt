@@ -23,9 +23,6 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
-import java.io.PrintWriter
-import java.io.StringWriter
-import java.util.Date
 import java.util.concurrent.Executors
 
 /**
@@ -41,21 +38,6 @@ class MainActivity : AudioServiceActivity() {
     private var pendingStorage: MethodChannel.Result? = null
     private val viz = VizStream()
     private val js by lazy { JsRunner(this) }
-
-    /** Native crashes go to a file the app shows under Settings > Problem reports. */
-    private fun catchCrashes() {
-        val previous = Thread.getDefaultUncaughtExceptionHandler()
-        val file = File(filesDir, "native_crash.txt")
-        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
-            try {
-                val sw = StringWriter()
-                e.printStackTrace(PrintWriter(sw))
-                file.appendText("=== ${Date()} (thread ${thread.name}, Android ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})\n$sw\n")
-            } catch (_: Throwable) {
-            }
-            previous?.uncaughtException(thread, e)
-        }
-    }
 
     private fun canWrite(): Boolean =
         if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
@@ -82,7 +64,6 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        catchCrashes()
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/visualizer").setStreamHandler(viz)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp/progress").setStreamHandler(Ytdlp.progressHandler)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp").setMethodCallHandler { call, result ->

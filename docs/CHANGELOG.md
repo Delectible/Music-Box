@@ -144,6 +144,12 @@
    memory (each runs its own Python); plain messages for a wrong device
    clock (common before a GPS fix) and for SD cards / USB sticks, which
    apps can't save to on Android 10. (0.3.5)
+52. Fix: 0.3.5 closed straight away on start. R8 stripped what WorkManager
+   (the daily yt-dlp check) needs to open its database at launch. Kept
+   now, and WorkManager only starts when first used (`RoadieApp`), so it
+   can't stop the app opening; crashes this early are now recorded for
+   Problem reports. Checked on an Android 10 emulator with a release
+   build. (0.3.6)
 
 ## Ideas
 
