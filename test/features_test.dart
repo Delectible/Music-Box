@@ -490,4 +490,30 @@ void main() {
     expect(Spotify.isLink(Uri.parse('https://open.spotify.com/intl-de/playlist/abc')), isTrue);
     expect(() => Spotify.itemOf('track', 'x', '<html></html>'), throwsA(isA<UnsupportedLink>()));
   });
+
+  test('slow connections: speed from yt-dlp, wrong clock, close matches', () {
+    expect(
+      Ytdlp.speedOf('[download]  45.2% of ~  3.20MiB at  120.00KiB/s ETA 00:15 (frag 3/40)'),
+      120 * 1024,
+    );
+    expect(Ytdlp.speedOf('[download]  12.0% of 5.1MiB at 1.50MiB/s ETA 00:03'), 1.5 * 1024 * 1024);
+    expect(Ytdlp.speedOf('[download] Destination: x.mp3'), isNull);
+    expect(
+      Ytdlp.friendly('ERROR: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate is not yet valid>'),
+      Ytdlp.badClock,
+    );
+    expect(Ytdlp.looksBroken('certificate verify failed: certificate is not yet valid'), isFalse);
+    expect(YtdlpFailure(Ytdlp.friendly('ERROR: Read timed out.'), '').network, isTrue);
+    // A cover with the right length: not good enough to take, close enough to ask.
+    final cover = SongMatcher.score(
+      title: 'Coming Home',
+      artist: 'Lumen Coast',
+      length: const Duration(seconds: 249),
+      candTitle: 'Coming Home - Lumen Coast (Cover)',
+      candUploader: 'someone sings',
+      candLength: const Duration(seconds: 249),
+    );
+    expect(cover, lessThan(SongMatcher.threshold));
+    expect(cover, greaterThanOrEqualTo(SongMatcher.closeFrom));
+  });
 }

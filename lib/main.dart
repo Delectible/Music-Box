@@ -8,6 +8,7 @@ import 'core/audio.dart';
 import 'core/crash_log.dart';
 import 'core/levelling.dart';
 import 'core/library.dart';
+import 'core/native.dart';
 import 'core/player.dart';
 import 'core/playlists.dart';
 import 'core/settings.dart';
@@ -23,6 +24,8 @@ Future<void> _start() async {
   await CrashLog.init();
   final prefs = await SharedPreferences.getInstance();
   final settings = Settings(prefs);
+  final device = await Native.device();
+  Settings.deviceRamMb = (device['ramMb'] as num?)?.toInt() ?? 0;
   final source = MediaStoreSource();
   final engine = await AudioEngine.start(source);
   final player = Player(engine, prefs)..previousRestarts = () => settings.previousRestarts;

@@ -110,6 +110,24 @@ class MainActivity : AudioServiceActivity() {
                     result.success(null)
                 }
                 "filesDir" -> result.success(filesDir.path)
+                // What this device is: Android version, memory, CPU types, WebView.
+                "device" -> {
+                    val am = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                    val mi = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+                    val webView = try {
+                        android.webkit.WebView.getCurrentWebViewPackage()?.versionName ?: ""
+                    } catch (e: Exception) { "" }
+                    result.success(
+                        mapOf(
+                            "sdk" to Build.VERSION.SDK_INT,
+                            "ramMb" to (mi.totalMem / (1024 * 1024)).toInt(),
+                            "lowRam" to am.isLowRamDevice,
+                            "abis" to Build.SUPPORTED_ABIS.toList(),
+                            "webView" to webView,
+                            "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
+                        ),
+                    )
+                }
                 "musicDir" -> result.success(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).path,
                 )

@@ -15,7 +15,8 @@ import 'sources.dart';
 import 'tag_fixer.dart';
 import 'ytdlp.dart';
 
-enum JobState { queued, downloading, tagging, done, failed, skipped }
+/// review: only a close match was found; waiting for Allow / Disallow.
+enum JobState { queued, downloading, tagging, done, failed, skipped, review }
 
 /// Songs downloaded together that become a playlist once all are done.
 class _Batch {
@@ -36,6 +37,15 @@ class DownloadJob {
 
   /// The SoundCloud upload it was found as (songs from Spotify / YouTube).
   Uri? foundAt;
+
+  /// The close match waiting for a decision ([JobState.review]).
+  Found? close;
+
+  /// A close match the person allowed: downloaded as is, no search.
+  Uri? forced;
+
+  /// Download speed (bytes a second), while it's downloading.
+  double speed = 0;
   String? path;
   bool cancelled = false;
   DownloadJob(this.track);
@@ -44,11 +54,20 @@ class DownloadJob {
 }
 
 /// How a run of downloads went (everything queued until the queue emptied).
+/// Live: a close match allowed or disallowed later moves group.
 class DownloadReport {
-  final List<DownloadJob> saved, already, failed;
+  final List<DownloadJob> jobs;
   final DateTime at;
-  DownloadReport(this.saved, this.already, this.failed) : at = DateTime.now();
-  int get total => saved.length + already.length + failed.length;
+  DownloadReport(this.jobs) : at = DateTime.now();
+  List<DownloadJob> _in(JobState s) => [
+    for (final j in jobs)
+      if (j.state == s) j,
+  ];
+  List<DownloadJob> get saved => _in(JobState.done);
+  List<DownloadJob> get already => _in(JobState.skipped);
+  List<DownloadJob> get failed => _in(JobState.failed);
+  List<DownloadJob> get close => _in(JobState.review);
+  int get total => jobs.length;
 }
 
 /// The download queue: several at a time (Settings), saved as Artist/Album/NN Title.ext in
@@ -82,26 +101,72 @@ class Downloads extends ChangeNotifier {
 
   void _maybeReport() {
     if (_round.isEmpty || _round.any((j) => j.active)) return;
-    report = DownloadReport(
-      [
-        for (final j in _round)
-          if (j.state == JobState.done) j,
-      ],
-      [
-        for (final j in _round)
-          if (j.state == JobState.skipped) j,
-      ],
-      [
-        for (final j in _round)
-          if (j.state == JobState.failed) j,
-      ],
-    );
+    report = DownloadReport([..._round]);
     _round.clear();
+  }
+
+  List<DownloadJob> get toReview => [
+    for (final j in jobs)
+      if (j.state == JobState.review) j,
+  ];
+
+  /// Keep the close match: download it as found.
+  void allowClose(DownloadJob j) {
+    if (j.state != JobState.review || j.close == null) return;
+    j
+      ..forced = j.close!.page
+      ..state = JobState.queued
+      ..error = null
+      ..progress = 0;
+    if (!_round.contains(j)) _round.add(j);
+    notifyListeners();
+    _pump();
+  }
+
+  void disallowClose(DownloadJob j) {
+    if (j.state != JobState.review) return;
+    j
+      ..state = JobState.failed
+      ..error = 'Close match not kept';
+    notifyListeners();
+    _makePlaylists();
+  }
+
+  void allowAllClose() => toReview.forEach(allowClose);
+  void disallowAllClose() => toReview.forEach(disallowClose);
+
+  // A slow connection: offer fewer downloads at once (once per app run).
+  bool slowHint = false;
+  bool _slowOffered = false;
+  DateTime? _slowSince;
+  int _netRetries = 0;
+
+  void dismissSlowHint() {
+    slowHint = false;
+    _slowOffered = true;
+    notifyListeners();
+  }
+
+  /// Several at once but little coming in, or the connection keeps dropping.
+  void _checkSpeed() {
+    if (_slowOffered || slowHint || settings.downloadThreads <= 2) return;
+    final busy = jobs.where((j) => j.state == JobState.downloading && j.speed > 0).toList();
+    final total = busy.fold<double>(0, (a, j) => a + j.speed);
+    // Under ~150 KB/s between them: a song of a few MB takes minutes each.
+    if (busy.length >= 2 && total < 150 * 1024) {
+      _slowSince ??= DateTime.now();
+      if (DateTime.now().difference(_slowSince!) < const Duration(seconds: 25)) return;
+    } else if (_netRetries < 3) {
+      _slowSince = null;
+      return;
+    }
+    slowHint = true;
+    _slowOffered = true;
   }
 
   /// Every failed job again (from the report).
   void retryFailed() {
-    for (final j in [...jobs.where((j) => j.state == JobState.failed)]) {
+    for (final j in [...jobs.where((j) => j.state == JobState.failed && j.error != 'Close match not kept')]) {
       retry(j);
     }
   }
@@ -223,8 +288,10 @@ class Downloads extends ChangeNotifier {
       for (var attempt = 0; ; attempt++) {
         try {
           if (t.viaYtdlp) {
-            file = await _ytdlpFetch(j, file, (p) {
+            file = await _ytdlpFetch(j, file, (p, speed) {
               j.progress = p;
+              if (speed != null) j.speed = speed;
+              _checkSpeed();
               j.note = null;
               final now = DateTime.now();
               if (now.difference(last).inMilliseconds > 250) {
@@ -262,7 +329,10 @@ class Downloads extends ChangeNotifier {
           );
           break;
         } on Object catch (e) {
-          if (j.cancelled || !isNetworkError(e) || attempt >= waits.length) rethrow;
+          final net = isNetworkError(e) || (e is YtdlpFailure && e.network);
+          if (j.cancelled || !net || attempt >= waits.length) rethrow;
+          _netRetries++;
+          _checkSpeed();
           for (var s = waits[attempt]; s > 0 && !j.cancelled; s--) {
             j.note = '${friendlyError(e)} · trying again in $s s';
             notifyListeners();
@@ -273,6 +343,7 @@ class Downloads extends ChangeNotifier {
         }
       }
       j.note = null;
+      j.speed = 0;
       j.state = JobState.tagging;
       notifyListeners();
       await _tag(file.path, t);
@@ -280,9 +351,18 @@ class Downloads extends ChangeNotifier {
       _newFiles.add(file.path);
       _rescan?.cancel();
       _rescan = Timer(const Duration(seconds: 2), _addToLibrary);
+    } on CloseMatch catch (e) {
+      // Not downloaded: waits for Allow / Disallow.
+      j
+        ..state = JobState.review
+        ..close = e.found
+        ..note = null
+        ..speed = 0
+        ..error = 'Close match found';
     } on Object catch (e, st) {
       j.state = JobState.failed;
       j.note = null;
+      j.speed = 0;
       if (e is NotMusicFile) {
         // Nothing worth keeping.
         final p = j.path;
@@ -304,22 +384,27 @@ class Downloads extends ChangeNotifier {
 
   /// yt-dlp download (SoundCloud): the artist's file or the best full stream,
   /// named like the rest; returns the file it saved.
-  Future<File> _ytdlpFetch(DownloadJob j, File planned, void Function(double) progress) async {
+  Future<File> _ytdlpFetch(DownloadJob j, File planned, void Function(double, double?) progress) async {
     await Directory(planned.parent.path).create(recursive: true);
     if (!j.track.findOnSoundCloud) return _ytdlpGet(j, j.track.url, planned, progress);
+    final forced = j.forced;
+    if (forced != null) {
+      j.foundAt = forced;
+      return _ytdlpGet(j, forced, planned, progress);
+    }
     // Songs from Spotify / YouTube: the best SoundCloud matches, in turn,
     // until one gives the whole song (not a Go+ preview).
     j.note = 'Finding it on SoundCloud…';
     notifyListeners();
-    final pages = await SongMatcher.find(j.track);
+    final found = await SongMatcher.pages(j.track);
     Object? last;
-    for (final page in pages) {
+    for (final f in found) {
       if (j.cancelled) break;
       try {
-        j.foundAt = page;
-        return await _ytdlpGet(j, page, planned, progress);
+        j.foundAt = f.page;
+        return await _ytdlpGet(j, f.page, planned, progress);
       } on YtdlpFailure catch (e) {
-        if (e.message == 'Cancelled' || e.message.contains('internet')) rethrow;
+        if (e.message == 'Cancelled' || e.network) rethrow;
         last = e;
       } on NotMusicFile catch (e) {
         last = e;
@@ -331,7 +416,12 @@ class Downloads extends ChangeNotifier {
     throw last ?? NoMatch('Not found on SoundCloud');
   }
 
-  Future<File> _ytdlpGet(DownloadJob j, Uri page, File planned, void Function(double) progress) async {
+  Future<File> _ytdlpGet(
+    DownloadJob j,
+    Uri page,
+    File planned,
+    void Function(double, double?) progress,
+  ) async {
     final base = planned.path.substring(0, planned.path.lastIndexOf('.'));
     j.note = 'Starting…';
     notifyListeners();
@@ -439,7 +529,8 @@ class Downloads extends ChangeNotifier {
   /// Batches whose songs have all finished become playlists, in their order.
   void _makePlaylists() {
     for (final b in [..._batches]) {
-      if (b.jobs.any((j) => j.active)) continue;
+      // Close matches still to decide on keep the playlist waiting.
+      if (b.jobs.any((j) => j.active || j.state == JobState.review)) continue;
       final byPath = {for (final s in library.unfiltered) s.path: s};
       final songs = [
         for (final j in b.jobs)

@@ -52,6 +52,11 @@ class LinkInfo {
 /// A short, plain description of a network error.
 String friendlyError(Object e) {
   if (e is HttpFailure) return e.toString();
+  // Head units often start with the wrong date until they get a GPS fix.
+  final low = '$e'.toLowerCase();
+  if (e is HandshakeException && (low.contains('not yet valid') || low.contains('expired'))) {
+    return 'This device\'s date or time is wrong, so secure sites are refused. Set the date and time (or turn on automatic time)';
+  }
   if (e is SocketException) {
     return e.message.contains('host lookup') || e.osError?.errorCode == 7
         ? 'No internet connection'
@@ -69,7 +74,14 @@ String friendlyError(Object e) {
     return 'YouTube won\'t play this here${why == null || why.isEmpty ? '' : ': $why'}';
   }
   if (e is NotMusicFile) return 'That link isn\'t a music file (${e.what})';
-  if (e is FileSystemException) return 'Couldn\'t save the file (${e.osError?.message ?? e.message})';
+  if (e is FileSystemException) {
+    final code = e.osError?.errorCode;
+    // Android 10 and older: SD cards and USB sticks are read-only for apps.
+    if ((code == 13 || code == 30) && !(e.path ?? '').startsWith('/storage/emulated')) {
+      return removableReadOnly;
+    }
+    return 'Couldn\'t save the file (${e.osError?.message ?? e.message})';
+  }
   return '$e';
 }
 
@@ -78,19 +90,23 @@ bool isNetworkError(Object e) =>
     e is SocketException ||
     e is HttpException ||
     e is TimeoutException ||
-    e is TlsException ||
+    (e is TlsException && !'$e'.toLowerCase().contains('certificate')) ||
     (e is HttpFailure && e.status != null && (e.status! >= 500 || e.status == 429));
+
+const removableReadOnly =
+    'Android doesn\'t let apps save to this SD card or USB stick. Choose a folder on the internal storage '
+    '(Get music > settings > Save downloads to)';
 
 /// Plain dart:io HTTP: JSON, bytes and file downloads with progress.
 class Http {
   static final _client = HttpClient()
     ..userAgent = '${AppInfo.name}/${AppInfo.version} ( https://github.com/Delectible/Music-Box )'
-    ..connectionTimeout = const Duration(seconds: 20);
+    ..connectionTimeout = const Duration(seconds: 30);
 
   static Future<HttpClientResponse> _get(Uri uri, {Map<String, String>? headers}) async {
-    final req = await _client.getUrl(uri).timeout(const Duration(seconds: 25));
+    final req = await _client.getUrl(uri).timeout(const Duration(seconds: 45));
     headers?.forEach(req.headers.set);
-    final res = await req.close().timeout(const Duration(seconds: 40));
+    final res = await req.close().timeout(const Duration(seconds: 60));
     if (res.statusCode >= 400) {
       await res.drain<void>();
       throw HttpFailure('Request to ${uri.host} failed', res.statusCode);
@@ -155,7 +171,7 @@ class Http {
             : url;
         final res = await _get(u, headers: rangeInQuery ? null : {'Range': 'bytes=$got-$to'});
         var n = 0;
-        await for (final c in res.timeout(const Duration(seconds: 30))) {
+        await for (final c in res.timeout(const Duration(seconds: 60))) {
           if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
           sink.add(c);
           n += c.length;
@@ -222,7 +238,7 @@ class Http {
     var checked = resumed; // a resumed file was checked the first time
     final head = <int>[];
     try {
-      await for (final c in res.timeout(const Duration(seconds: 45))) {
+      await for (final c in res.timeout(const Duration(seconds: 60))) {
         if (cancelled?.call() ?? false) throw HttpFailure('Cancelled');
         if (!checked) {
           // Never save a web page or error page as a "song".

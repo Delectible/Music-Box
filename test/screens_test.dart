@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:roadie/screens/close_matches_screen.dart';
+import 'package:roadie/core/sources.dart';
+import 'package:roadie/core/scope.dart';
+import 'package:roadie/core/matcher.dart';
+import 'package:roadie/core/downloads.dart';
 import 'package:roadie/app.dart';
 import 'package:roadie/core/library.dart';
 import 'package:roadie/core/player.dart';
@@ -401,5 +406,79 @@ void main() {
     expect(find.text('Edit tags · 6 songs'), findsOneWidget);
     await shot(tester, 'car_17_edit_tags');
     a.engine.close();
+  });
+
+  testWidgets('close matches: wanted vs found, allow and disallow', (tester) async {
+    for (final size in [car, phone]) {
+      setScreen(tester, size);
+      final a = await _app({});
+      await tester.pumpWidget(a.widget);
+      await _settle(tester);
+      final ctx = tester.element(find.byType(Navigator).first);
+      final d = AppScope.of(ctx).downloads;
+      RemoteTrack want(String t, int secs) => RemoteTrack(
+        title: t,
+        artist: 'Lumen Coast',
+        album: 'Coastlines',
+        url: Uri.parse('https://open.spotify.com/track/x$t'),
+        ext: 'mp3',
+        length: Duration(seconds: secs),
+        findOnSoundCloud: true,
+        viaYtdlp: true,
+      );
+      final jobs = [
+        reviewJob(
+          want('Night Drive', 214),
+          Found(
+            Uri.parse('https://soundcloud.com/a/b'),
+            'Night Drive (Live at the Pier)',
+            'coastfan',
+            const Duration(seconds: 251),
+            null,
+            0.45,
+          ),
+        ),
+        reviewJob(
+          want('Harbour', 200),
+          Found(
+            Uri.parse('https://soundcloud.com/a/c'),
+            'Lumen Coast - Harbour (Cover)',
+            'someone',
+            const Duration(seconds: 199),
+            null,
+            0.5,
+          ),
+        ),
+        reviewJob(
+          want('Gone', 180),
+          Found(
+            Uri.parse('https://soundcloud.com/a/d'),
+            'Gone (Extended Mix)',
+            'Lumen Coast',
+            const Duration(seconds: 302),
+            null,
+            0.33,
+          ),
+        ),
+      ];
+      d.jobs.addAll(jobs);
+      openCloseMatches(ctx);
+      await _settle(tester);
+      expect(find.text('You wanted'), findsWidgets);
+      await shot(tester, size == car ? 'car_17_close_matches' : 'phone_close_matches');
+      await tester.tap(find.text('Disallow').first);
+      await _settle(tester);
+      expect(jobs[0].state, JobState.failed);
+      expect(jobs[0].error, 'Close match not kept');
+      await tester.tap(find.text('Allow all'));
+      await _settle(tester);
+      expect(jobs[1].forced, Uri.parse('https://soundcloud.com/a/c'));
+      expect(d.toReview, isEmpty);
+      expect(find.text('Nothing left to check'), findsOneWidget);
+      for (final j in jobs) {
+        j.cancelled = true;
+      }
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 }

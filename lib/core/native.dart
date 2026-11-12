@@ -15,6 +15,10 @@ class Native {
 
   static Future<String?> filesDir() => _call<String>('filesDir');
 
+  /// Android version, memory (MB), CPU types, WebView version; empty in tests.
+  static Future<Map<String, Object?>> device() async =>
+      (await _call<Map<Object?, Object?>>('device'))?.cast<String, Object?>() ?? const {};
+
   /// The device's Music folder (/storage/emulated/0/Music on most phones).
   static Future<String> musicDir() async => await _call<String>('musicDir') ?? '/storage/emulated/0/Music';
 

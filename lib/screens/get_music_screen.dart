@@ -8,9 +8,11 @@ import '../core/http.dart';
 import '../core/matcher.dart';
 import '../core/preview.dart';
 import '../core/scope.dart';
+import '../core/settings.dart';
 import '../core/sources.dart';
 import '../core/tag_fixer.dart';
 import 'browser_screen.dart';
+import 'close_matches_screen.dart';
 import 'folders_screen.dart';
 import 'sources_screen.dart';
 
@@ -840,6 +842,21 @@ class _DownloadsScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.only(bottom: 40),
             children: [
+              if (d.slowHint) _SlowCard(downloads: d),
+              if (d.toReview.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
+                    onPressed: () => openCloseMatches(context),
+                    icon: const Icon(Icons.compare_arrows_rounded),
+                    label: Text(
+                      d.toReview.length == 1
+                          ? 'Close match found: check it'
+                          : '${d.toReview.length} close matches found: check them',
+                    ),
+                  ),
+                ),
               if (d.report case final r?) _ReportCard(report: r, downloads: d),
               FutureBuilder(
                 future: d.folder(),
@@ -862,6 +879,7 @@ class _DownloadsScreen extends StatelessWidget {
                     JobState.done => Icon(Icons.check_circle_rounded, color: cs.primary),
                     JobState.skipped => const Icon(Icons.check_circle_outline_rounded),
                     JobState.failed => Icon(Icons.error_rounded, color: cs.error),
+                    JobState.review => Icon(Icons.help_rounded, color: cs.tertiary),
                   },
                   title: Text(j.track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(
@@ -874,6 +892,7 @@ class _DownloadsScreen extends StatelessWidget {
                       JobState.done => 'In your library · ${j.track.artist}',
                       JobState.skipped => j.error ?? 'Skipped',
                       JobState.failed => j.error ?? 'Failed',
+                      JobState.review => 'Found "${j.close?.title}" · ${j.track.artist}',
                     },
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -883,6 +902,12 @@ class _DownloadsScreen extends StatelessWidget {
                           tooltip: 'Cancel',
                           icon: const Icon(Icons.close_rounded),
                           onPressed: () => d.cancel(j),
+                        )
+                      : j.state == JobState.review
+                      ? FilledButton.tonal(
+                          style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                          onPressed: () => openCloseMatches(context),
+                          child: const Text('Close match found'),
                         )
                       : j.state == JobState.failed
                       ? IconButton(
@@ -895,6 +920,49 @@ class _DownloadsScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// The connection looks slow: offer fewer downloads at once.
+class _SlowCard extends StatelessWidget {
+  final Downloads downloads;
+  const _SlowCard({required this.downloads});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context).settings;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.network_check_rounded),
+              title: const Text('The connection looks slow'),
+              subtitle: Text(
+                '${s.downloadThreads} downloads at once are sharing it. Fewer at once finish sooner and drop less.',
+              ),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(onPressed: downloads.dismissSlowHint, child: const Text('Keep as is')),
+                FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: () {
+                    s.downloadThreads = 2;
+                    downloads.dismissSlowHint();
+                  },
+                  child: const Text('Use 2 at once'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -939,6 +1007,7 @@ class _ReportCard extends StatelessWidget {
                 [
                   '${r.saved.length} saved',
                   if (r.already.isNotEmpty) '${r.already.length} already there',
+                  if (r.close.isNotEmpty) '${r.close.length} close matches to check',
                   if (r.failed.isNotEmpty) '${r.failed.length} didn\'t work',
                 ].join(' · '),
               ),
@@ -948,6 +1017,17 @@ class _ReportCard extends StatelessWidget {
                 onPressed: downloads.dismissReport,
               ),
             ),
+            if (r.close.isNotEmpty)
+              ListTile(
+                leading: Icon(Icons.help_rounded, color: cs.tertiary),
+                title: Text('Close matches (${r.close.length})'),
+                subtitle: const Text('Not saved yet: allow or disallow each one'),
+                trailing: FilledButton.tonal(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: () => openCloseMatches(context),
+                  child: const Text('Close match found'),
+                ),
+              ),
             if (r.failed.isNotEmpty)
               group('Didn\'t work', r.failed, Icons.error_rounded, cs.error, reasons: true),
             if (r.saved.isNotEmpty) group('Saved', r.saved, Icons.check_circle_rounded, cs.primary),
@@ -1064,6 +1144,14 @@ class DownloadOptions extends StatelessWidget {
             title: Text('Downloads at the same time'),
             subtitle: Text('More is faster on good internet; fewer is gentler on weak signal'),
           ),
+          if (Settings.lowMemory)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+              child: Text(
+                'This device has ${(Settings.deviceRamMb / 1024).toStringAsFixed(1)} GB of memory: '
+                '2 at once is safest (each download needs its own memory).',
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
             child: Wrap(

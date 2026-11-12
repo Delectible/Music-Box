@@ -132,6 +132,18 @@
    streams fetched in 4 pieces at once; yt-dlp started at launch.
    A summary when a run finishes (saved / already there / didn't work and
    why, try the failed ones again). (0.3.5)
+49. Close matches: when SoundCloud only has something near (another
+   version, a different length, a cover), the song waits with a "Close
+   match found" button: the song wanted on the left, the upload found on
+   the right (with Listen), Allow / Disallow each, Allow all / Disallow
+   all. (0.3.5)
+50. Slow car Wi-Fi: longer timeouts (60 s), more tries with growing waits,
+   IPv4 only (half-working IPv6 on hotspots); when downloads crawl or keep
+   dropping, offers "Use 2 at once". (0.3.5)
+51. Android 10 / head units: 2 downloads at once by default under 3 GB of
+   memory (each runs its own Python); plain messages for a wrong device
+   clock (common before a GPS fix) and for SD cards / USB sticks, which
+   apps can't save to on Android 10. (0.3.5)
 
 ## Ideas
 

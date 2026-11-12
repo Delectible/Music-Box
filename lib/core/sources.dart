@@ -957,7 +957,7 @@ class SoundCloud extends MusicSource {
     'bestaudio[format_id!*=preview]',
   ].join('/');
 
-  static String? _art(Map<String, Object?> e) {
+  static String? artOf(Map<String, Object?> e) {
     final thumbs = (e['thumbnails'] as List? ?? const []).cast<Map<Object?, Object?>>();
     final big =
         thumbs.where((t) => '${t['id']}' == 't500x500').firstOrNull ??
@@ -989,7 +989,7 @@ class SoundCloud extends MusicSource {
       url: Uri.parse(url),
       ext: 'mp3',
       length: _seconds(e['duration']),
-      cover: _art(e),
+      cover: artOf(e),
       quality: original ? 'Original or MP3' : 'MP3',
       viaYtdlp: true,
       resolvePreview: () => streamUrl(url),
@@ -1043,7 +1043,7 @@ class SoundCloud extends MusicSource {
           id: u.toString(),
           title: '${j['title'] ?? 'SoundCloud playlist'}',
           artist: '${j['uploader'] ?? ''}',
-          cover: _art(j),
+          cover: artOf(j),
           data: u.toString(),
         ),
       ];

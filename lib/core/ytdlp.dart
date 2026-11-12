@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'crash_log.dart';
+import 'http.dart';
 
 class YtdlpResult {
   final int exit;
@@ -16,6 +17,9 @@ class YtdlpFailure implements Exception {
   final String message; // plain words
   final String detail; // yt-dlp's own error
   YtdlpFailure(this.message, this.detail);
+
+  /// The connection dropped / timed out: worth waiting and trying again.
+  bool get network => message == Ytdlp.noInternet;
   @override
   String toString() => message;
 }
@@ -34,18 +38,48 @@ class Ytdlp {
   static bool nightlyFallback = true;
 
   /// Options for every run: no stray config, patient with slow networks.
+  /// Long timeouts and growing waits between tries, for weak car Wi-Fi and
+  /// phone hotspots; IPv4 only, since half-working IPv6 on hotspots makes
+  /// every connection wait for a timeout first.
   static const base = [
     '--ignore-config',
     '--no-color',
+    '--force-ipv4',
     '--socket-timeout',
-    '30',
+    '60',
     '--retries',
-    '10',
+    '15',
     '--fragment-retries',
-    '10',
+    '15',
     '--extractor-retries',
-    '3',
+    '5',
+    '--retry-sleep',
+    'http:exp=2:30',
+    '--retry-sleep',
+    'fragment:exp=1:20',
+    '--retry-sleep',
+    'extractor:exp=2:20',
   ];
+
+  static const noInternet = 'No internet connection (or it dropped)';
+  static const badClock =
+      'This device\'s date or time is wrong, so secure sites are refused. Set the date and time (or turn on automatic time)';
+
+  /// Bytes a second from a yt-dlp progress line ("… at 1.20MiB/s ETA …").
+  static double? speedOf(String line) {
+    final m = RegExp(r'at\s+([\d.]+)\s*([KMG]?i?B)/s').firstMatch(line);
+    if (m == null) return null;
+    final n = double.tryParse(m[1]!) ?? 0;
+    final unit = m[2]!.toUpperCase();
+    final mult = unit.startsWith('K')
+        ? 1024
+        : unit.startsWith('M')
+        ? 1024 * 1024
+        : unit.startsWith('G')
+        ? 1 << 30
+        : 1;
+    return n * mult;
+  }
 
   static Future<YtdlpResult> _raw(String method, Map<String, Object?> args) async {
     final m = await _ch.invokeMapMethod<String, Object?>(method, args) ?? const {};
@@ -67,7 +101,7 @@ class Ytdlp {
     String url,
     List<String> args, {
     required String id,
-    required void Function(double) progress,
+    required void Function(double progress, double? bytesPerSecond) progress,
   }) {
     _progress ??= _events
         .receiveBroadcastStream()
@@ -75,7 +109,7 @@ class Ytdlp {
         .asBroadcastStream();
     final sub = _progress!.where((e) => e['id'] == id).listen((e) {
       final p = (e['progress'] as num?)?.toDouble() ?? -1;
-      progress(p < 0 ? -1 : p / 100);
+      progress(p < 0 ? -1 : p / 100, speedOf('${e['line'] ?? ''}'));
     });
     return _healing(
       () => _raw('download', {
@@ -162,6 +196,7 @@ class Ytdlp {
   static bool looksBroken(String err) {
     final e = err.toLowerCase();
     if (_isNetwork(e) ||
+        _isClock(e) ||
         e.contains('404') ||
         e.contains('not available in your country') ||
         e.contains('geo')) {
@@ -184,12 +219,29 @@ class Ytdlp {
       e.contains('name or service not known') ||
       e.contains('no address associated') ||
       e.contains('network is unreachable') ||
-      e.contains('connection reset');
+      e.contains('connection reset') ||
+      e.contains('connection refused') ||
+      e.contains('connection aborted') ||
+      e.contains('temporary failure in name resolution') ||
+      e.contains('read timed out') ||
+      e.contains('remote end closed connection') ||
+      e.contains('incompleteread');
+
+  static bool _isClock(String e) =>
+      e.contains('certificate is not yet valid') ||
+      e.contains('certificate has expired') ||
+      e.contains('not yet valid');
 
   /// yt-dlp's error in plain words.
   static String friendly(String err) {
     final e = err.toLowerCase();
-    if (_isNetwork(e)) return 'No internet connection (or it dropped)';
+    if (_isClock(e)) return badClock;
+    if (e.contains('read-only file system') || (e.contains('permission denied') && e.contains('/storage/'))) {
+      return e.contains('/storage/emulated')
+          ? 'Roadie isn\'t allowed to save there. Allow file access or pick another folder'
+          : removableReadOnly;
+    }
+    if (_isNetwork(e)) return noInternet;
     if (e.contains('requested format is not available') || e.contains('preview')) {
       return 'SoundCloud only offers a 30-second preview of this track (it\'s for SoundCloud Go+ subscribers)';
     }

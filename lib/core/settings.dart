@@ -207,8 +207,15 @@ class Settings extends ChangeNotifier {
   bool get lookUpDownloads => _p.getBool('lookUpDownloads') ?? true;
   set lookUpDownloads(bool v) => _set('lookUpDownloads', v);
 
+  /// The device's memory in MB (0: unknown), set at start (main.dart).
+  static int deviceRamMb = 0;
+
+  /// Memory-light devices (many car head units): each download runs its own
+  /// copy of Python, so fewer at once.
+  static bool get lowMemory => deviceRamMb > 0 && deviceRamMb < 3000;
+
   /// Songs downloaded at the same time (1..8).
-  int get downloadThreads => (_p.getInt('downloadThreads') ?? 4).clamp(1, 8);
+  int get downloadThreads => (_p.getInt('downloadThreads') ?? (lowMemory ? 2 : 4)).clamp(1, 8);
   set downloadThreads(int v) => _set('downloadThreads', v.clamp(1, 8));
 
   /// Prefer lossless (FLAC) when a source has it.

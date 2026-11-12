@@ -43,7 +43,26 @@ class _RoadieAppState extends State<RoadieApp> {
 
   /// When a run of downloads finishes, say how it went, wherever you are.
   DownloadReport? _told;
+  bool _toldSlow = false;
   void _report() {
+    if (_downloads.slowHint && !_toldSlow) {
+      _toldSlow = true;
+      _messenger.currentState?.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(
+            'The connection looks slow. Download 2 at a time instead of ${widget.settings.downloadThreads}?',
+          ),
+          action: SnackBarAction(
+            label: 'Use 2',
+            onPressed: () {
+              widget.settings.downloadThreads = 2;
+              _downloads.dismissSlowHint();
+            },
+          ),
+        ),
+      );
+    }
     final r = _downloads.report;
     if (r == null || identical(r, _told)) return;
     _told = r;
@@ -53,6 +72,7 @@ class _RoadieAppState extends State<RoadieApp> {
         duration: const Duration(seconds: 6),
         content: Text(
           'Downloads finished: ${r.saved.length + r.already.length} of ${r.total} saved'
+          '${r.close.isNotEmpty ? ' · ${r.close.length} close matches to check' : ''}'
           '${bad > 0 ? ' · $bad didn\'t work' : ''}',
         ),
         action: SnackBarAction(
