@@ -386,7 +386,21 @@ class Downloads extends ChangeNotifier {
   /// named like the rest; returns the file it saved.
   Future<File> _ytdlpFetch(DownloadJob j, File planned, void Function(double, double?) progress) async {
     await Directory(planned.parent.path).create(recursive: true);
-    if (!j.track.findOnSoundCloud) return _ytdlpGet(j, j.track.url, planned, progress);
+    if (!j.track.findOnSoundCloud) {
+      try {
+        return await _ytdlpGet(j, j.track.url, planned, progress);
+      } on YtdlpFailure catch (e) {
+        // A Go+ preview or DRM upload: look for another upload of the song.
+        if (!e.unavailable || j.cancelled) rethrow;
+        j.note = 'Can\'t save this upload: looking for another one…';
+        notifyListeners();
+        try {
+          return await _fromMatches(j, await SongMatcher.pages(j.track, not: j.track.url), planned, progress);
+        } on NoMatch {
+          throw e; // nothing else: the clear reason why
+        }
+      }
+    }
     final forced = j.forced;
     if (forced != null) {
       j.foundAt = forced;
@@ -396,7 +410,16 @@ class Downloads extends ChangeNotifier {
     // until one gives the whole song (not a Go+ preview).
     j.note = 'Finding it on SoundCloud…';
     notifyListeners();
-    final found = await SongMatcher.pages(j.track);
+    return _fromMatches(j, await SongMatcher.pages(j.track), planned, progress);
+  }
+
+  /// The matches in turn until one gives the whole song.
+  Future<File> _fromMatches(
+    DownloadJob j,
+    List<Found> found,
+    File planned,
+    void Function(double, double?) progress,
+  ) async {
     Object? last;
     for (final f in found) {
       if (j.cancelled) break;

@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'crash_log.dart';
+import 'native.dart';
 import 'http.dart';
 
 class YtdlpResult {
@@ -20,6 +22,10 @@ class YtdlpFailure implements Exception {
 
   /// The connection dropped / timed out: worth waiting and trying again.
   bool get network => message == Ytdlp.noInternet;
+
+  /// This upload can't be saved (Go+ preview only, or DRM): another upload
+  /// of the same song may be fine.
+  bool get unavailable => message == Ytdlp.drm || message.contains('30-second preview');
   @override
   String toString() => message;
 }
@@ -62,6 +68,7 @@ class Ytdlp {
   ];
 
   static const noInternet = 'No internet connection (or it dropped)';
+  static const drm = 'SoundCloud locks this upload (DRM): it only plays in SoundCloud\'s own app';
   static const blockedNetwork =
       'This network is blocking secure connections. If it\'s a Wi-Fi with a sign-in page, sign in first, '
       'or use another connection';
@@ -94,7 +101,7 @@ class Ytdlp {
   static Future<YtdlpResult> run(String url, List<String> args, {String? id}) => _healing(
     () => _raw('run', {
       'url': url,
-      'args': [...base, ...args],
+      'args': [...base, ..._extra, ...args],
       'id': id,
     }),
   );
@@ -117,7 +124,7 @@ class Ytdlp {
     return _healing(
       () => _raw('download', {
         'url': url,
-        'args': [...base, ...args],
+        'args': [...base, ..._extra, ...args],
         'id': id,
       }),
     ).whenComplete(sub.cancel);
@@ -131,19 +138,83 @@ class Ytdlp {
     }
   }
 
-  /// (version, build name), e.g. ("2026.10.26", "stable").
+  /// The installed yt-dlp version, e.g. "2026.10.26".
   static Future<String> version() async {
     try {
       final m = await _ch.invokeMapMethod<String, Object?>('version');
-      return '${m?['version'] ?? '?'}';
+      final v = '${m?['version'] ?? '?'}';
+      _useFast(v);
+      return v;
     } on Object {
       return 'not ready';
     }
   }
 
+  /// Options added to every run once [prepare] has set things up: a lasting
+  /// cache (SoundCloud's key isn't fetched again each time) and Roadie's
+  /// plugin.
+  static var _extra = <String>[];
+  static String? _cache, _plugins;
+
+  /// Roadie's yt-dlp plugin: skips SoundCloud's per-track "Checking
+  /// thumbnail extension" request (one round trip per result, ~0.3 s each:
+  /// 40 results took ~13 s, now ~1.5 s). Roadie uses the 500 px cover, not
+  /// that one. If a yt-dlp update renames things, it quietly does nothing.
+  static const plugin = r'''
+# Roadie: skip SoundCloud's per-track "Checking thumbnail extension" request.
+import yt_dlp.extractor.soundcloud as sc
+
+_NOTE = 'Checking thumbnail extension'
+
+
+def _make(base):
+    class Fast(base, plugin_name='roadie'):
+        def _request_webpage(self, url_or_request, video_id, note=None, *args, **kwargs):
+            if note == _NOTE:
+                return False
+            return super()._request_webpage(url_or_request, video_id, note, *args, **kwargs)
+    Fast.__name__ = 'Roadie' + base.__name__
+    return Fast
+
+
+for _n in ('SoundcloudIE', 'SoundcloudSetIE', 'SoundcloudSearchIE', 'SoundcloudPlaylistIE', 'SoundcloudUserIE'):
+    _b = getattr(sc, _n, None)
+    if _b is not None:
+        globals()['Roadie' + _n] = _make(_b)
+''';
+
+  /// Writes the plugin and picks the cache folder (main.dart, at start).
+  static Future<void> prepare() async {
+    final files = await Native.filesDir();
+    if (files == null) return;
+    try {
+      _cache = '$files/ytdlp/cache';
+      final dir = Directory('$files/ytdlp/plugins/roadie/yt_dlp_plugins/extractor');
+      await dir.create(recursive: true);
+      final f = File('${dir.path}/roadie_fast.py');
+      if (!f.existsSync() || f.readAsStringSync() != plugin) await f.writeAsString(plugin);
+      _plugins = '$files/ytdlp/plugins';
+      _extra = ['--cache-dir', _cache!];
+    } on Object catch (e) {
+      CrashLog.note('yt-dlp plugin not written: $e');
+    }
+  }
+
+  /// The plugin needs --plugin-dirs (yt-dlp 2025.02 and later).
+  static void _useFast(String v) {
+    final cache = _cache, plugins = _plugins;
+    if (cache == null) return;
+    _extra = [
+      '--cache-dir',
+      cache,
+      if (plugins != null && v.compareTo('2025.03') >= 0) ...['--plugin-dirs', plugins],
+    ];
+  }
+
   /// Checks for a newer yt-dlp: "DONE" (updated) or "ALREADY_UP_TO_DATE".
   static Future<String> update({String? on}) async {
     final s = await _ch.invokeMethod<String>('update', {'channel': on ?? channel}) ?? '';
+    unawaited(version()); // newer yt-dlp: may now take the plugin
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ytdlpLastCheck', '${DateTime.now().millisecondsSinceEpoch}|$s');
     return s;
@@ -258,6 +329,7 @@ class Ytdlp {
     }
     if (_isNetwork(e)) return noInternet;
     if (_isBlocked(e)) return blockedNetwork;
+    if (e.contains('drm protected')) return drm;
     if (e.contains('requested format is not available') || e.contains('preview')) {
       return 'SoundCloud only offers a 30-second preview of this track (it\'s for SoundCloud Go+ subscribers)';
     }

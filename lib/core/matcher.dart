@@ -164,15 +164,15 @@ class SongMatcher {
 
   /// SoundCloud uploads for the song: good ones best first (up to 3), or
   /// close ones when nothing good turned up.
-  static Future<Matches> find(RemoteTrack t) async {
-    final key = '${norm(t.artist)}|${norm(t.title)}|${t.length?.inSeconds}';
+  static Future<Matches> find(RemoteTrack t, {Uri? not}) async {
+    final key = '${norm(t.artist)}|${norm(t.title)}|${t.length?.inSeconds}|$not';
     final hit = _cache[key];
     if (hit != null) return hit;
     final main = artistsOf(t.artist).firstOrNull ?? '';
-    var m = await _search(t, '$main ${coreTitle(t.title)}'.trim());
+    var m = await _search(t, '$main ${coreTitle(t.title)}'.trim(), not);
     // Nothing good: try the full title and every artist, the way the song is listed.
     if (m.good.isEmpty) {
-      final again = await _search(t, '${t.title} ${t.artist}'.trim());
+      final again = await _search(t, '${t.title} ${t.artist}'.trim(), not);
       m = again.good.isNotEmpty
           ? again
           : Matches(const [], ([...m.close, ...again.close]..sort(_best)).take(3).toList());
@@ -182,8 +182,8 @@ class SongMatcher {
   }
 
   /// The good pages, or [CloseMatch] / [NoMatch].
-  static Future<List<Found>> pages(RemoteTrack t) async {
-    final m = await find(t);
+  static Future<List<Found>> pages(RemoteTrack t, {Uri? not}) async {
+    final m = await find(t, not: not);
     if (m.good.isNotEmpty) return m.good;
     if (m.close.isNotEmpty) throw CloseMatch(m.close.first);
     throw NoMatch('Not found on SoundCloud');
@@ -191,13 +191,13 @@ class SongMatcher {
 
   static int _best(Found a, Found b) => b.score.compareTo(a.score);
 
-  static Future<Matches> _search(RemoteTrack t, String query) async {
+  static Future<Matches> _search(RemoteTrack t, String query, [Uri? not]) async {
     final j = Ytdlp.json(await Ytdlp.run('scsearch10:$query', ['-J', '--flat-playlist']));
     final all = <Found>[];
     final seen = <String>{};
     for (final raw in (j['entries'] as List? ?? const []).whereType<Map<Object?, Object?>>()) {
       final url = '${raw['webpage_url'] ?? raw['url'] ?? ''}';
-      if (!url.startsWith('http') || !seen.add(url)) continue;
+      if (!url.startsWith('http') || !seen.add(url) || url == '$not') continue;
       final secs = (raw['duration'] as num?)?.toDouble();
       final len = secs == null ? null : Duration(milliseconds: (secs * 1000).round());
       final s = score(

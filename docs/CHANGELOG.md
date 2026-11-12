@@ -150,6 +150,13 @@
    can't stop the app opening; crashes this early are now recorded for
    Problem reports. Checked on an Android 10 emulator with a release
    build. (0.3.6)
+53. Faster SoundCloud search: yt-dlp checked each result's original cover
+   with an extra request (~0.3 s each, 40 results ~13 s). Roadie's yt-dlp
+   plugin (`Ytdlp.plugin`, written at start, `--plugin-dirs`) skips that:
+   ~1.5 s. Also a lasting yt-dlp cache (`--cache-dir`). (0.3.7)
+54. Go+ preview-only and DRM-locked SoundCloud uploads: the download looks
+   for another upload of the same song (the matcher, close matches to
+   check); plain message for DRM. (0.3.7)
 
 ## Ideas
 

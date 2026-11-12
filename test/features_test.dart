@@ -536,4 +536,16 @@ void main() {
       isTrue,
     );
   });
+
+  test('yt-dlp: DRM / Go+ uploads look elsewhere; plugin is well-formed', () {
+    final drm = Ytdlp.friendly('ERROR: [soundcloud] 1195313011: This video is DRM protected');
+    expect(drm, Ytdlp.drm);
+    expect(YtdlpFailure(drm, '').unavailable, isTrue);
+    final goPlus = Ytdlp.friendly('ERROR: [soundcloud] 257041362: Requested format is not available.');
+    expect(YtdlpFailure(goPlus, '').unavailable, isTrue);
+    expect(YtdlpFailure(Ytdlp.noInternet, '').unavailable, isFalse);
+    expect(Ytdlp.looksBroken('ERROR: [soundcloud] 1: This video is DRM protected'), isFalse);
+    expect(Ytdlp.plugin, contains("plugin_name='roadie'"));
+    expect(Ytdlp.plugin, contains("'Checking thumbnail extension'"));
+  });
 }
