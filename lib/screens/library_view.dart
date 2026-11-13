@@ -220,11 +220,12 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
           SliverPadding(
             padding: const EdgeInsets.all(14),
             sliver: SliverGrid.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: opts.columns > 0 ? opts.columns : (w / 320).ceil().clamp(1, 6),
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 1.9,
+              gridDelegate: FitGrid(
+                columns: opts.columns > 0 ? opts.columns : (w / 320).ceil().clamp(1, 6),
+                spacing: 14,
+                crossSpacing: 14,
+                ratio: 1 / 1.9,
+                min: bigCardRoom(context),
               ),
               itemCount: items.length,
               itemBuilder: (context, i) =>
@@ -238,7 +239,8 @@ class _LibraryViewState extends State<LibraryView> with AutomaticKeepAliveClient
   SliverGridDelegate _grid(BuildContext context, ViewOptions opts, {bool big = false}) {
     final w = MediaQuery.sizeOf(context).width;
     final cols = opts.columns > 0 ? opts.columns : (w / (big ? 260 : 170)).floor().clamp(2, 8);
-    return SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, childAspectRatio: 0.78);
+    // The cover's width, plus room for the title and artist at this text size.
+    return FitGrid(columns: cols, below: cardTextRoom(context));
   }
 
   /// Header text where a new section starts, keyed by index.
@@ -296,8 +298,18 @@ class _PlayBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 22),
             ),
           ),
-          const Spacer(),
-          Text('${songs.length} songs', style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(width: 12),
+          // Gives way (fades out) when big text leaves no room beside the buttons.
+          Expanded(
+            child: Text(
+              '${songs.length} songs',
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
         ],
       ),
     );
@@ -453,7 +465,8 @@ class _Shelf extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: w + 64,
+          // The cover plus room for its two lines at this text size.
+          height: w - 12 + cardTextRoom(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10),

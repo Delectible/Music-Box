@@ -193,6 +193,15 @@
    into Roadie), or back to automatic (the first song's). (0.4.2)
 62. Fix: the − next to a song in a playlist removed it, but the screen
    didn't update; the playlist screen now follows changes. (0.4.2)
+63. Layout sweep: text ran into the next row of covers (and other overlaps)
+   at some sizes. Grids now size rows from the cover plus the text's real
+   height at the current text size (`FitGrid`, `cardTextRoom`); wide cards,
+   shelves and the artist page's album row too; the player's cover / record
+   gives way on short screens; the play bar's count gives way; tab titles
+   shrink rather than break mid-word; bottom bar labels hidden with more
+   than 5 tabs. A test opens every main screen at car, phone, small phone
+   and tablet sizes at 100 / 130 / 160 % text and fails on any overflow.
+   (0.4.3)
 
 ## Ideas
 

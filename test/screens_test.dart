@@ -25,6 +25,7 @@ import 'package:roadie/screens/sources_screen.dart';
 import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
+import 'package:roadie/screens/settings_screen.dart';
 import 'package:roadie/widgets/menus.dart' show openCollection;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -560,5 +561,129 @@ void main() {
     a.playlists.setCover(p);
     expect(p.coverSongId, isNull);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  // A sweep for text running into things: every main screen at car, phone,
+  // small phone and tablet sizes, at normal, large and largest text.
+  testWidgets('layout sweep: nothing overflows at any size or text scale', (tester) async {
+    final problems = <String>{};
+    final sizes = {
+      'car': car,
+      'phone': phone,
+      'small': const Size(360, 640),
+      'tablet': const Size(1024, 1366),
+    };
+    for (final MapEntry(key: name, value: size) in sizes.entries) {
+      for (final scale in [1.0, 1.3, 1.6]) {
+        setScreen(tester, size);
+        final where = '$name @${(scale * 100).round()}%';
+        var at = '';
+        final old = FlutterError.onError;
+        FlutterError.onError = (d) {
+          final msg = d.exceptionAsString();
+          if (msg.contains('overflowed')) {
+            final full = d.toString();
+            final w = RegExp(r'(lib/[a-z_/]+\.dart:\d+)').firstMatch(full)?.group(1) ?? '?';
+            problems.add('$where · $at · $w · ${msg.split('\n').first}');
+          } else {
+            old?.call(d);
+          }
+        };
+        try {
+          final a = await _app({'textScale': scale});
+          await tester.pumpWidget(a.widget);
+          await _settle(tester);
+          await a.player.playAll(a.library.albums[0].songs, start: 1);
+          await _settle(tester);
+          for (final t in LibraryTab.values.where((t) => t != LibraryTab.get)) {
+            at = t.label;
+            final byTip = find.byTooltip(t.label);
+            final f = byTip.evaluate().isNotEmpty ? byTip.first : find.text(t.label).first;
+            if (f.evaluate().isEmpty) continue;
+            await tester.tap(f, warnIfMissed: false);
+            await _settle(tester, 600);
+            if (t == LibraryTab.albums) await shot(tester, 'sweep_albums_${name}_${(scale * 100).round()}');
+          }
+          at = 'album';
+          final ctx = tester.element(find.byType(Navigator).first);
+          openCollection(ctx, a.library.albums[1]);
+          await _settle(tester);
+          Navigator.of(ctx).pop();
+          await _settle(tester);
+          for (final layout in PlayerStyle.values) {
+            at = 'player ${layout.name}';
+            a.settings.playerStyle = layout;
+            PlayerSheet.open(ctx);
+            await _settle(tester);
+            Navigator.of(ctx).pop();
+            await _settle(tester);
+          }
+          at = 'get music';
+          final g = find.byTooltip('Get music');
+          if (g.evaluate().isNotEmpty) {
+            await tester.tap(g.first, warnIfMissed: false);
+            await _settle(tester, 600);
+          }
+          at = 'downloads';
+          final d = AppScope.of(ctx).downloads;
+          RemoteTrack t(String title) => RemoteTrack(
+            title: '$title with a rather long name to see it wrap',
+            artist: 'Lumen Coast and the Orchestra of Somewhere',
+            url: Uri.parse('https://x/$title'),
+            ext: 'mp3',
+            length: const Duration(seconds: 200),
+          );
+          final jobs = [
+            DownloadJob(t('Done'))..state = JobState.done,
+            DownloadJob(t('Failed'))
+              ..state = JobState.failed
+              ..error = 'Not found on SoundCloud',
+            DownloadJob(t('Running'))
+              ..state = JobState.downloading
+              ..progress = 0.4,
+            reviewJob(
+              t('Close'),
+              Found(
+                Uri.parse('https://soundcloud.com/a/b'),
+                'A long found title (Live at the Pier, 2019 remaster)',
+                'someone uploading',
+                const Duration(seconds: 260),
+                null,
+                0.4,
+              ),
+            ),
+          ];
+          d.jobs.addAll(jobs);
+          openDownloads(ctx);
+          await _settle(tester);
+          at = 'close matches';
+          openCloseMatches(ctx);
+          await _settle(tester);
+          Navigator.of(ctx).pop();
+          await _settle(tester);
+          Navigator.of(ctx).pop();
+          await _settle(tester);
+          for (final j in jobs) {
+            j.cancelled = true;
+          }
+          d.jobs.clear();
+          at = 'sources';
+          unawaited(Navigator.of(ctx).push(MaterialPageRoute<void>(builder: (_) => const SourcesScreen())));
+          await _settle(tester);
+          Navigator.of(ctx).pop();
+          await _settle(tester);
+          at = 'settings';
+          unawaited(Navigator.of(ctx).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen())));
+          await _settle(tester);
+          Navigator.of(ctx).pop();
+          await _settle(tester);
+          await tester.pumpWidget(const SizedBox());
+          await _settle(tester, 200);
+        } finally {
+          FlutterError.onError = old;
+        }
+      }
+    }
+    if (problems.isNotEmpty) fail('Overflows:\n${problems.join('\n')}');
   });
 }

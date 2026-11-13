@@ -91,8 +91,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           bottomNavigationBar: NavigationBar(
             selectedIndex: i,
             height: 68,
+            // Many tabs: no room for a word under each icon (it broke mid-word at
+            // big text sizes), and the page's big title already names the tab.
             labelBehavior: tabs.length > 5
-                ? NavigationDestinationLabelBehavior.onlyShowSelected
+                ? NavigationDestinationLabelBehavior.alwaysHide
                 : NavigationDestinationLabelBehavior.alwaysShow,
             onDestinationSelected: (n) => _select(tabs[n]),
             destinations: [
@@ -221,10 +223,17 @@ class _Header extends StatelessWidget {
               layoutBuilder: (current, previous) =>
                   Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
               duration: motion(AppScope.of(context).settings, 200),
-              child: Text(
-                tab.label,
+              // One line, shrunk to fit if it must (it broke mid-word on small
+              // screens at big text sizes).
+              child: FittedBox(
                 key: ValueKey(tab),
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  tab.label,
+                  maxLines: 1,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ),

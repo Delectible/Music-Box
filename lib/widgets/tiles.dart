@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../core/format.dart';
 import '../core/models.dart';
@@ -215,7 +216,12 @@ class CollectionTile extends StatelessWidget {
                     dimension: size,
                     child: Icon(Icons.folder_rounded, size: size * 0.7, color: cs.primary),
                   )
-                : Art(albumId: item.artAlbumId, size: size, radius: round ? size / 2 : null, file: item.coverPath),
+                : Art(
+                    albumId: item.artAlbumId,
+                    size: size,
+                    radius: round ? size / 2 : null,
+                    file: item.coverPath,
+                  ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -374,4 +380,75 @@ class SectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How tall [style] text is at the current text size ([lines] of it).
+double textHeight(BuildContext context, TextStyle? style, {int lines = 1}) {
+  final tp = TextPainter(
+    // In the app's own font (Jost), as the real text is.
+    text: TextSpan(text: 'Ág', style: DefaultTextStyle.of(context).style.merge(style)),
+    textScaler: MediaQuery.textScalerOf(context),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+  )..layout();
+  final h = tp.height * lines;
+  tp.dispose();
+  return h;
+}
+
+/// The room under a [CollectionCard]'s cover for its two lines of text.
+double cardTextRoom(BuildContext context) {
+  final tt = Theme.of(context).textTheme;
+  return 12 +
+      8 +
+      textHeight(context, tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)) +
+      textHeight(context, tt.bodySmall) +
+      8;
+}
+
+/// The least height a [BigCard] needs for its title and subtitle.
+double bigCardRoom(BuildContext context) =>
+    32 +
+    textHeight(context, const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, height: 1.1), lines: 2) +
+    4 +
+    textHeight(context, const TextStyle(fontSize: 14)) +
+    10;
+
+/// A grid whose rows are as tall as their tiles need: [ratio] of the tile's
+/// width (at least [min]), plus [below] for the text under it. Fixed shapes
+/// let text run into the next row at large text sizes.
+class FitGrid extends SliverGridDelegate {
+  final int columns;
+  final double spacing, crossSpacing, ratio, below, min;
+  const FitGrid({
+    required this.columns,
+    this.spacing = 0,
+    this.crossSpacing = 0,
+    this.ratio = 1,
+    this.below = 0,
+    this.min = 0,
+  });
+
+  @override
+  SliverGridLayout getLayout(SliverConstraints constraints) {
+    final w = (constraints.crossAxisExtent - crossSpacing * (columns - 1)) / columns;
+    final h = (w * ratio < min ? min : w * ratio) + below;
+    return SliverGridRegularTileLayout(
+      crossAxisCount: columns,
+      mainAxisStride: h + spacing,
+      crossAxisStride: w + crossSpacing,
+      childMainAxisExtent: h,
+      childCrossAxisExtent: w,
+      reverseCrossAxis: axisDirectionIsReversed(constraints.crossAxisDirection),
+    );
+  }
+
+  @override
+  bool shouldRelayout(FitGrid old) =>
+      old.columns != columns ||
+      old.spacing != spacing ||
+      old.crossSpacing != crossSpacing ||
+      old.ratio != ratio ||
+      old.below != below ||
+      old.min != min;
 }

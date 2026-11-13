@@ -582,7 +582,8 @@ class _CoverLayout extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              cover(size),
+              // Short screens / big text: the cover gives way so the rest fits.
+              Flexible(child: FittedBox(child: cover(size))),
               _TrackSwitcher(
                 songId: song.id,
                 direction: direction,
@@ -762,7 +763,11 @@ class _RecordLayout extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _Record(song: song, size: size, direction: direction),
+              Flexible(
+                child: FittedBox(
+                  child: _Record(song: song, size: size, direction: direction),
+                ),
+              ),
               _TrackSwitcher(
                 songId: song.id,
                 direction: direction,

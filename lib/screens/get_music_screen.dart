@@ -12,6 +12,7 @@ import '../core/settings.dart';
 import '../core/sources.dart';
 import '../core/tag_fixer.dart';
 import '../core/ytdlp.dart';
+import '../widgets/tiles.dart';
 import 'browser_screen.dart';
 import 'close_matches_screen.dart';
 import 'folders_screen.dart';
@@ -415,11 +416,21 @@ class _GetMusicScreenState extends State<GetMusicScreen> {
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 sliver: SliverGrid.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: cols,
-                    childAspectRatio: 0.74,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
+                  // Cover, then a two-line title and the artist, at this text size.
+                  gridDelegate: FitGrid(
+                    columns: cols,
+                    spacing: 8,
+                    crossSpacing: 8,
+                    below:
+                        12 +
+                        8 +
+                        textHeight(
+                          context,
+                          Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                          lines: 2,
+                        ) +
+                        textHeight(context, Theme.of(context).textTheme.bodySmall) +
+                        4,
                   ),
                   itemCount: res.items!.length,
                   itemBuilder: (context, i) => _ItemCard(

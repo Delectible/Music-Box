@@ -52,7 +52,8 @@ class CollectionScreen extends StatelessWidget {
       if (albums.length > 1) ...[
         const SectionHeader('Albums'),
         SizedBox(
-          height: 210,
+          // A 160-wide card: its cover plus room for its text at this size.
+          height: 160 - 12 + cardTextRoom(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10),
