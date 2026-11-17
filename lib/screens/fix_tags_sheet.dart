@@ -27,7 +27,12 @@ Future<void> showFixTags(BuildContext context, Song song, {FixJob? job}) => show
 /// Fix the tags of many songs: queued, clear matches written, unsure ones
 /// left for you to pick. Opens the Fix tags screen (it keeps going when
 /// closed).
-Future<void> fixTagsFor(BuildContext context, List<Song> songs, {bool onlyIncomplete = true}) async {
+Future<void> fixTagsFor(
+  BuildContext context,
+  List<Song> songs, {
+  bool onlyIncomplete = true,
+  bool coversOnly = false,
+}) async {
   final scope = AppScope.of(context);
   if (!await TagFixer.ensureWrite()) {
     if (context.mounted) {
@@ -37,7 +42,7 @@ Future<void> fixTagsFor(BuildContext context, List<Song> songs, {bool onlyIncomp
     }
     return;
   }
-  scope.fixer.addAll(songs, onlyIncomplete: onlyIncomplete);
+  scope.fixer.addAll(songs, onlyIncomplete: onlyIncomplete, coversOnly: coversOnly);
   if (context.mounted) openFixQueue(context);
 }
 
@@ -287,11 +292,12 @@ class _FixTile extends StatelessWidget {
     final m = j.best;
     final showMatch =
         m != null && (j.state == FixState.review || j.state == FixState.fixed || j.state == FixState.writing);
-    final cover = showMatch && m.coverThumb.isNotEmpty
+    final thumb = j.coverThumb.isNotEmpty ? j.coverThumb : (showMatch ? m.coverThumb : '');
+    final cover = thumb.isNotEmpty
         ? ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
-              m.coverThumb,
+              thumb,
               width: 56,
               height: 56,
               fit: BoxFit.cover,
@@ -304,7 +310,7 @@ class _FixTile extends StatelessWidget {
       FixState.looking => 'Looking it up…',
       FixState.writing => 'Writing tags and cover…',
       FixState.review => 'Not sure: pick the right one',
-      FixState.fixed => null,
+      FixState.fixed => j.note,
       FixState.unchanged || FixState.noMatch || FixState.failed => j.note,
     };
     final into = showMatch

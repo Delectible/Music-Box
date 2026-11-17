@@ -329,6 +329,14 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   onTap: () => fixTagsFor(context, scope.library.songs),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.image_search_rounded),
+                  title: const Text('Find missing covers'),
+                  subtitle: const Text(
+                    'Covers only, for songs that have none: much quicker than fixing tags',
+                  ),
+                  onTap: () => fixTagsFor(context, scope.library.songs, coversOnly: true),
+                ),
                 _Slider(
                   icon: Icons.timer_off_rounded,
                   title: 'Hide songs shorter than',

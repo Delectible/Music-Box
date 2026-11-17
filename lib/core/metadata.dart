@@ -486,10 +486,17 @@ class MusicBrainz {
         .trim();
     return _covers.putIfAbsent('deezer/${n(artist)}/${n(album)}', () async {
       try {
-        final q = [if (artist.isNotEmpty) 'artist:"${_q(artist)}"', 'album:"${_q(album)}"'].join(' ');
-        final d =
-            await Http.json(Uri.https('api.deezer.com', '/search/album', {'q': q, 'limit': '10'})) as Map?;
-        final hits = (d?['data'] as List? ?? const []).cast<Map<Object?, Object?>>();
+        // The exact search, then a plain one (small spelling differences).
+        final hits = <Map<Object?, Object?>>[];
+        for (final q in [
+          [if (artist.isNotEmpty) 'artist:"${_q(artist)}"', 'album:"${_q(album)}"'].join(' '),
+          '${_q(artist)} ${_q(album)}'.trim(),
+        ]) {
+          final d =
+              await Http.json(Uri.https('api.deezer.com', '/search/album', {'q': q, 'limit': '10'})) as Map?;
+          hits.addAll((d?['data'] as List? ?? const []).cast<Map<Object?, Object?>>());
+          if (hits.isNotEmpty) break;
+        }
         for (final h in hits) {
           final t = n('${h['title'] ?? ''}');
           final a = n('${(h['artist'] as Map?)?['name'] ?? ''}');
@@ -529,22 +536,137 @@ class MusicBrainz {
     if (file.existsSync() && file.lengthSync() > 1024) return file.path;
     await findCover(m);
     if (m.coverUrl.isEmpty) return null;
-    try {
-      final b = await Http.bytes(Uri.parse(m.coverUrl));
-      // A real picture (JPEG / PNG), not an error page.
-      final jpeg = b.length > 2 && b[0] == 0xFF && b[1] == 0xD8;
-      final png = b.length > 4 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47;
-      if (b.length < 1024 || !(jpeg || png)) return null;
-      await file.parent.create(recursive: true);
-      await file.writeAsBytes(b);
-      return file.path;
-    } on Object {
-      return null;
-    }
+    return saveCover(m.coverUrl, file);
   }
 
   static String _titleCase(String s) =>
       s.split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)).join(' ');
+}
+
+/// Downloads a cover picture to [file]; null unless it's a real picture
+/// (JPEG / PNG), not an error page.
+Future<String?> saveCover(String url, File file) async {
+  if (file.existsSync() && file.lengthSync() > 1024) return file.path;
+  try {
+    final b = await Http.bytes(Uri.parse(url));
+    final jpeg = b.length > 2 && b[0] == 0xFF && b[1] == 0xD8;
+    final png = b.length > 4 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47;
+    if (b.length < 1024 || !(jpeg || png)) return null;
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(b);
+    return file.path;
+  } on Object {
+    return null;
+  }
+}
+
+/// A cover found without MusicBrainz: big and small picture links, and
+/// where it came from.
+typedef FoundCover = ({String url, String thumb, String from});
+
+/// Album covers straight from two open music catalogues (no key, no
+/// one-a-second limit): much faster than a MusicBrainz lookup when all a
+/// song is missing is its cover. One lookup per album (remembered), so a
+/// whole album costs one search.
+class CoverSearch {
+  static final _found = <String, Future<FoundCover?>>{};
+
+  static String _n(String x) => x
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\(\[][^\)\]]*[\)\]]'), ' ')
+      .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+      .trim();
+
+  static bool _same(String a, String b) {
+    final x = _n(a), y = _n(b);
+    if (x.isEmpty || y.isEmpty) return false;
+    return x == y || x.startsWith(y) || y.startsWith(x);
+  }
+
+  static bool _artistOk(String want, String got) {
+    final x = _n(want), y = _n(got);
+    return x.isEmpty || x == y || x.contains(y) || y.contains(x);
+  }
+
+  /// The cover of [album] by [artist]; with no album, the album of the song
+  /// [title] (its first release found).
+  static Future<FoundCover?> find({required String artist, required String album, String title = ''}) {
+    final key = album.isNotEmpty ? 'a/${_n(artist)}/${_n(album)}' : 't/${_n(artist)}/${_n(title)}';
+    return _found.putIfAbsent(key, () async {
+      final r = album.isNotEmpty
+          ? await _deezerAlbum(artist, album) ?? await _itunesAlbum(artist, album)
+          : await _deezerTrack(artist, title);
+      // Nothing found: try again next time (maybe offline).
+      if (r == null) unawaited(_found.remove(key));
+      return r;
+    });
+  }
+
+  static Future<FoundCover?> _deezerAlbum(String artist, String album) async {
+    final c = await MusicBrainz.deezerCover(artist, album);
+    return c == null ? null : (url: c.$1, thumb: c.$2, from: 'Deezer');
+  }
+
+  static Future<FoundCover?> _deezerTrack(String artist, String title) async {
+    if (title.isEmpty) return null;
+    try {
+      // The exact search first, then a plain one (the exact one misses on
+      // small spelling differences).
+      for (final q in [
+        [if (artist.isNotEmpty) 'artist:"$artist"', 'track:"$title"'].join(' '),
+        '$artist $title'.trim(),
+      ]) {
+        final d = await Http.json(Uri.https('api.deezer.com', '/search', {'q': q, 'limit': '15'})) as Map?;
+        final hits = [
+          for (final h in (d?['data'] as List? ?? const []).cast<Map<Object?, Object?>>())
+            if (_same('${h['title'] ?? ''}', title) &&
+                _artistOk(artist, '${(h['artist'] as Map?)?['name'] ?? ''}'))
+              h,
+        ];
+        // The same title exactly beats "Title (Live ...)".
+        hits.sort(
+          (x, y) =>
+              (_n('${x['title']}') == _n(title) ? 0 : 1).compareTo(_n('${y['title']}') == _n(title) ? 0 : 1),
+        );
+        for (final h in hits) {
+          final al = h['album'] as Map? ?? const {};
+          final big = '${al['cover_xl'] ?? al['cover_big'] ?? ''}';
+          if (big.isNotEmpty) return (url: big, thumb: '${al['cover_medium'] ?? big}', from: 'Deezer');
+        }
+      }
+    } on Object catch (e) {
+      CrashLog.note('Deezer track cover lookup failed: $e');
+    }
+    return null;
+  }
+
+  static Future<FoundCover?> _itunesAlbum(String artist, String album) async {
+    try {
+      final d =
+          await Http.json(
+                Uri.https('itunes.apple.com', '/search', {
+                  'term': '$artist $album'.trim(),
+                  'entity': 'album',
+                  'limit': '10',
+                }),
+              )
+              as Map?;
+      for (final h in (d?['results'] as List? ?? const []).cast<Map<Object?, Object?>>()) {
+        if (!_same('${h['collectionName'] ?? ''}', album)) continue;
+        if (!_artistOk(artist, '${h['artistName'] ?? ''}')) continue;
+        final small = '${h['artworkUrl100'] ?? ''}';
+        if (small.isEmpty) continue;
+        return (
+          url: small.replaceAll('100x100', '1000x1000'),
+          thumb: small.replaceAll('100x100', '250x250'),
+          from: 'iTunes',
+        );
+      }
+    } on Object catch (e) {
+      CrashLog.note('iTunes cover lookup failed: $e');
+    }
+    return null;
+  }
 }
 
 /// Writes tags (and a cover) into a file, then has Android re-read it.

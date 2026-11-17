@@ -127,6 +127,11 @@ Future<void> showCollectionMenu(BuildContext context, Collection c) {
         (Icons.playlist_add_rounded, 'Add to playlist…', () => addToPlaylist(context, c.songs)),
       (Icons.edit_rounded, 'Edit tags…', () => editTags(context, c.songs, what: c.title)),
       (Icons.auto_fix_high_rounded, 'Fix tags', () => fixTagsFor(context, c.songs, onlyIncomplete: false)),
+      (
+        Icons.image_search_rounded,
+        'Find missing covers',
+        () => fixTagsFor(context, c.songs, coversOnly: true),
+      ),
       if (c.kind == CollectionKind.album ||
           c.kind == CollectionKind.folder ||
           c.kind == CollectionKind.podcast)

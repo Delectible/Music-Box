@@ -264,6 +264,13 @@
    turns, about one a second; covers and writes overlap). Stop now stops at
    once, even mid-lookup or while waiting out a busy MusicBrainz. (0.4.5)
 
+77. Covers without MusicBrainz: when a song's tags are fine and only the
+   cover is missing, Fix tags takes it straight from two open music
+   catalogues (no key, no one-a-second limit; one search per album).
+   Settings > Find missing covers (and in album / artist menus) does just
+   covers for the whole library, much quicker; a song with no album gets
+   its song's album cover. (0.4.5)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

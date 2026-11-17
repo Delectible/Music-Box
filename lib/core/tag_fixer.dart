@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -38,6 +39,12 @@ class FixJob {
   FixState state = FixState.queued;
   final bool onlyIncomplete;
 
+  /// Only the cover is looked for (fast: no MusicBrainz).
+  final bool coversOnly;
+
+  /// The cover found by the quick cover search, for the list.
+  String coverThumb = '';
+
   /// What the file says (blanks guessed from its name and folders).
   TagValues? before;
   List<MbMatch> matches = const [];
@@ -47,7 +54,7 @@ class FixJob {
   int confidence = 0;
   String? note;
 
-  FixJob(this.song, {required this.onlyIncomplete});
+  FixJob(this.song, {required this.onlyIncomplete, this.coversOnly = false});
 
   bool get active => state == FixState.queued || state == FixState.looking || state == FixState.writing;
   MbMatch? get best => chosen ?? matches.firstOrNull;
@@ -63,7 +70,7 @@ class TagFixer extends ChangeNotifier {
   TagFixer(this.library);
 
   /// Songs worked on at once.
-  static const workers = 3;
+  static const workers = 4;
   static const sureEnough = 85;
 
   final jobs = <FixJob>[];
@@ -144,7 +151,7 @@ class TagFixer extends ChangeNotifier {
   static Future<bool> ensureWrite() async => await Native.canWrite() || await Native.requestWrite();
 
   /// Queues [songs] (those not already queued).
-  void addAll(List<Song> songs, {bool onlyIncomplete = true}) {
+  void addAll(List<Song> songs, {bool onlyIncomplete = true, bool coversOnly = false}) {
     // A new batch replaces the finished one.
     if (!running && needsYou == 0) jobs.clear();
     final busy = {
@@ -152,7 +159,7 @@ class TagFixer extends ChangeNotifier {
         if (j.active || j.state == FixState.review) j.song.path,
     };
     for (final s in songs) {
-      if (busy.add(s.path)) jobs.add(FixJob(s, onlyIncomplete: onlyIncomplete));
+      if (busy.add(s.path)) jobs.add(FixJob(s, onlyIncomplete: onlyIncomplete, coversOnly: coversOnly));
     }
     notifyListeners();
     _pump();
@@ -188,10 +195,28 @@ class TagFixer extends ChangeNotifier {
       final inFile = raw == null ? null : TagValues.fromMap(raw);
       final ofSong = TagValues.ofSong(j.song);
       j.before = (inFile ?? ofSong).fill(ofSong).fill(guessFromPath(j.song.path));
-      if (j.onlyIncomplete && inFile != null && !inFile.incomplete && raw!['hasCover'] == true) {
+      final hasCover = raw?['hasCover'] == true;
+      if (j.coversOnly && hasCover) {
+        j.state = FixState.unchanged;
+        j.note = 'Already has a cover';
+        return;
+      }
+      if (!j.coversOnly && j.onlyIncomplete && inFile != null && !inFile.incomplete && hasCover) {
         j.state = FixState.unchanged;
         j.note = 'Already has its tags and cover';
         return;
+      }
+      // Only the cover missing (or only covers asked for): the quick cover
+      // search, no MusicBrainz.
+      final t = j.before!;
+      final namesKnown = t.title.isNotEmpty && t.artist.isNotEmpty && t.album.isNotEmpty;
+      if (!hasCover && (j.coversOnly || (namesKnown && inFile != null && !inFile.incomplete))) {
+        if (await _quickCover(j, stopped)) return;
+        if (j.coversOnly) {
+          j.state = FixState.noMatch;
+          j.note = 'No cover found';
+          return;
+        }
       }
       final list = await candidates(j.song, query: j.before, cancelled: stopped);
       if (stopped()) throw LookupCancelled();
@@ -217,6 +242,28 @@ class TagFixer extends ChangeNotifier {
       j.note = e is HttpFailure ? friendlyError(e) : '$e';
       CrashLog.record(e, st, where: 'fix tags: ${j.song.path}');
     }
+  }
+
+  /// Finds and writes just the cover; false if none was found.
+  Future<bool> _quickCover(FixJob j, bool Function() stopped) async {
+    final t = j.before!;
+    final artist = t.albumArtist.isNotEmpty ? t.albumArtist : t.artist;
+    final found = await CoverSearch.find(artist: artist, album: t.album, title: t.title);
+    if (stopped()) throw LookupCancelled();
+    if (found == null) return false;
+    final key = found.url.hashCode.toUnsigned(32).toRadixString(16);
+    final file = await saveCover(found.url, File('${await coverCacheDir()}/quick_$key.jpg'));
+    if (file == null) return false;
+    j.coverThumb = found.thumb;
+    j.state = FixState.writing;
+    notifyListeners();
+    // Only the picture: the tags stay as they are.
+    await Native.writeTags(j.song.path, const {}, cover: file);
+    j.state = FixState.fixed;
+    j.note = t.album.isEmpty ? 'Cover added (from the song\'s album)' : 'Cover added';
+    _changed.add(j.song.path);
+    if (_changed.length >= 25) _flush();
+    return true;
   }
 
   Future<void> _write(FixJob j, MbMatch m, {bool keepExisting = true}) async {
