@@ -31,6 +31,7 @@ import 'package:roadie/screens/song_info_screen.dart';
 import 'package:roadie/screens/visualizer_screen.dart';
 import 'package:roadie/screens/library_view.dart';
 import 'package:roadie/screens/settings_screen.dart';
+import 'package:roadie/widgets/controls.dart' show SeekBar;
 import 'package:roadie/widgets/menus.dart' show openCollection;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -286,6 +287,23 @@ void main() {
     expect(find.text('Lossless'), findsWidgets);
     expect(find.textContaining('Internal storage'), findsOneWidget);
     await shot(tester, 'car_11_song_info');
+    a.engine.close();
+  });
+
+  testWidgets('glance on a landscape phone: text stays above the controls', (tester) async {
+    setScreen(tester, const Size(892, 412));
+    final a = await _app({'playerStyle': PlayerStyle.glance.name});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    await a.player.playAll(a.library.albums[0].songs, start: 3);
+    await _settle(tester);
+    PlayerSheet.open(tester.element(find.byType(Scaffold).first));
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    final title = tester.getRect(find.text('Coastline at 2am').last);
+    final bar = tester.getRect(find.byType(SeekBar));
+    expect(title.bottom, lessThanOrEqualTo(bar.top));
+    await shot(tester, 'phone_land_glance');
     a.engine.close();
   });
 

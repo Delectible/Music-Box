@@ -276,6 +276,10 @@
    full MusicBrainz lookup. An album / artist's "Fix tags" still does full
    lookups for all. (0.4.5)
 
+79. Fix: Glance in landscape (phones) ran the text into the controls. The
+   text and picture now size to the room above the controls; on short
+   screens it shows the title and artist only, bigger. (0.4.6)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

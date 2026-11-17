@@ -431,7 +431,16 @@ class _Titles extends StatelessWidget {
   final double size;
   final TextAlign align;
   final int maxLines;
-  const _Titles({required this.song, required this.size, this.align = TextAlign.start, this.maxLines = 2});
+
+  /// Short screens: title and artist only (no album line or quality badge).
+  final bool compact;
+  const _Titles({
+    required this.song,
+    required this.size,
+    this.align = TextAlign.start,
+    this.maxLines = 2,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -467,21 +476,24 @@ class _Titles extends StatelessWidget {
             style: TextStyle(fontSize: size * 0.6, color: cs.primary, fontWeight: FontWeight.w500),
           ),
         ),
-        _Link(
-          onTap: () {
-            final a = AppScope.of(context).library.album(song.albumId);
-            if (a != null) openCollection(context, a);
-          },
-          child: Text(
-            song.album,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: align,
-            style: TextStyle(fontSize: size * 0.5, color: cs.onSurfaceVariant),
+        if (!compact)
+          _Link(
+            onTap: () {
+              final a = AppScope.of(context).library.album(song.albumId);
+              if (a != null) openCollection(context, a);
+            },
+            child: Text(
+              song.album,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: align,
+              style: TextStyle(fontSize: size * 0.5, color: cs.onSurfaceVariant),
+            ),
           ),
-        ),
-        SizedBox(height: size * 0.3),
-        QualityBadge(song: song, size: (size * 0.42).clamp(12.0, 18.0)),
+        if (!compact) ...[
+          SizedBox(height: size * 0.3),
+          QualityBadge(song: song, size: (size * 0.42).clamp(12.0, 18.0)),
+        ],
       ],
     );
   }
@@ -737,29 +749,56 @@ class _GlanceLayout extends StatelessWidget {
                   direction: direction,
                   style: _DeckStyle.glance,
                   travel: box.maxWidth,
-                  builder: (song, live) {
-                    final art = Art(albumId: song.albumId, size: wide ? 140 : 96);
-                    return Row(
-                      children: [
-                        if (live)
-                          Hero(
-                            tag: 'now-art',
-                            flightShuttleBuilder: nowArtShuttle,
-                            createRectTween: nowArtRectTween,
-                            child: art,
-                          )
-                        else
-                          art,
-                        SizedBox(width: wide ? 32 : 20),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: _Titles(song: song, size: wide ? 52 : 36, maxLines: 2),
+                  // The text and picture size to the room left above the
+                  // controls (short landscape phones ran text into them).
+                  builder: (song, live) => LayoutBuilder(
+                    builder: (context, room) {
+                      final h = room.maxHeight;
+                      // Short (landscape phone): just the title and artist, bigger.
+                      final compact = h < 230;
+                      final text = (compact ? (h - 20) / 3.2 : (h - 56) / 4.6).clamp(
+                        16.0,
+                        wide ? 52.0 : 36.0,
+                      );
+                      final art = Art(
+                        albumId: song.albumId,
+                        size: min(wide ? 140.0 : 96.0, h - 8).clamp(40.0, 140.0),
+                      );
+                      return Row(
+                        children: [
+                          if (live)
+                            Hero(
+                              tag: 'now-art',
+                              flightShuttleBuilder: nowArtShuttle,
+                              createRectTween: nowArtRectTween,
+                              child: art,
+                            )
+                          else
+                            art,
+                          SizedBox(width: wide ? 32 : 20),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              // Still too tall (huge text setting): shrink to fit.
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: SizedBox(
+                                  width: max(0, room.maxWidth - (wide ? 172 : 116)),
+                                  child: _Titles(
+                                    song: song,
+                                    size: text,
+                                    maxLines: compact ? 1 : 2,
+                                    compact: compact,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
               const SeekBar(thickness: 12, fontSize: 20),
