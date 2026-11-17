@@ -12,6 +12,7 @@ import 'get_music_screen.dart';
 import 'home_screen.dart';
 import 'problems_screen.dart';
 import 'update_screen.dart';
+import 'visualizer_screen.dart' show VizOptions;
 
 void openSettings(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -230,6 +231,8 @@ class SettingsScreen extends StatelessWidget {
                   value: s.lyrics,
                   onChanged: (v) => s.lyrics = v,
                 ),
+                const _Section('Visualiser'),
+                const VizOptions(),
                 const _Section('Sound'),
                 _Choice<LevelMode>(
                   icon: Icons.equalizer_rounded,

@@ -280,6 +280,27 @@
    text and picture now size to the room above the controls; on short
    screens it shows the title and artist only, bigger. (0.4.6)
 
+80. Visualisers redone (after the classic iTunes and media player ones),
+   for landscape and portrait:
+   - Far more responsive: Android was levelling every capture to full
+     scale, so quiet and loud looked alike; now the sound is taken as
+     played and evened out slowly, so a quiet verse looks quiet and a drop
+     hits. New bass / mid / treble and onset (beat) detection; smoothing by
+     time, so motion is the same at any frame rate.
+   - Bars: slim bars, floor reflection, peak caps, the waveform across.
+     Mirror, Scope (phosphor afterglow; a ring in portrait), Cover bloom
+     (rays round the cover) and Waterfall (heat colours, live line) spruced
+     up. Ambience is now glowing ribbons of colour (GPU).
+   - Ribbons became Particles (thousands of glowing particles swirling round
+     wandering points; bass pulls, mids spin, beats throw them), Kaleido
+     became Alchemy (mirrored folding patterns), Tunnel became Nebula (a
+     glowing cloud round a bright core, stars streaming out).
+   - Options (in the visualiser's tune button and in Settings): a clock,
+     placed and styled per style; play controls Off / Show on tap / Always
+     (a slim bar along the bottom); the song's title for a moment when it
+     changes (with the controls, to skip it); change style every song or on
+     a timer. (0.5.0)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

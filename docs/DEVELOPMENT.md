@@ -59,7 +59,11 @@ then `flutter pub get`.
   `findJs` scores elements by address pattern, words and class signature;
   it can be checked in Node with jsdom (see features_test, RECIPE_JS).
 - `lib/core/visualizer.dart` + `widgets/visualizer_painter.dart`: the
-  feed (live, or made up when there's no permission / data) and 10 styles.
+  feed (live, or made up when there's no permission / data) and 9 styles.
+  `Visualizer.kt` captures as played (not normalized); the feed evens the
+  volume out slowly itself, splits bass / mid / treble and finds onsets.
+  Ambience, Alchemy and Nebula are GPU shaders (`shaders/*.frag`, loaded by
+  `VizShaders`), with plainer fallbacks.
 - `lib/core/levelling.dart` + `Loudness.kt`: volume levelling (ReplayGain
   or measured LUFS, cached in prefs `gains`).
 - `lib/core/lyrics.dart`, `quality.dart`, `smart.dart`: lyrics (LRCLIB /

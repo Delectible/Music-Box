@@ -135,6 +135,31 @@ void main() {
     expect(f.bands[60], lessThan(0.05));
   });
 
+  test('visualiser: a quiet part looks quiet, a loud one fills the scale', () {
+    final f = VizFeed();
+    Uint8List frame(int amp) {
+      final raw = Int8List(1024);
+      for (var k = 1; k < 200; k++) {
+        raw[2 * k] = (amp * (1 - k / 220)).round();
+        raw[2 * k + 1] = (amp * 0.3).round();
+      }
+      return Uint8List.sublistView(raw);
+    }
+
+    for (var i = 0; i < 40; i++) {
+      f.handle({'fft': frame(110)});
+      f.tick(1 / 20);
+    }
+    final loud = f.level;
+    for (var i = 0; i < 20; i++) {
+      f.handle({'fft': frame(14)});
+      f.tick(1 / 20);
+    }
+    expect(loud, greaterThan(0.4));
+    // Much lower straight away (no levelling every capture to full scale).
+    expect(f.level, lessThan(loud * 0.5));
+  });
+
   test('visualiser: made-up feed follows play / pause', () {
     final f = VizFeed()..playing = true;
     for (var i = 0; i < 60; i++) {

@@ -17,6 +17,13 @@ class VizStream : EventChannel.StreamHandler {
             val v = Visualizer(session)
             v.setEnabled(false)
             v.setCaptureSize(Visualizer.getCaptureSizeRange()[1].coerceAtMost(1024))
+            // The sound as played: the default ("normalized") levels every
+            // capture to full scale, so quiet and loud parts looked the same.
+            // Roadie evens out the overall volume itself, slowly.
+            try {
+                v.setScalingMode(Visualizer.SCALING_MODE_AS_PLAYED)
+            } catch (_: Throwable) {
+            }
             v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                 override fun onWaveFormDataCapture(vz: Visualizer, wave: ByteArray, rate: Int) {
                     events.success(mapOf("wave" to wave))

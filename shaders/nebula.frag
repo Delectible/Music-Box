@@ -8,6 +8,7 @@ uniform float uTreble;
 uniform float uBeat;
 uniform vec3 uColA;
 uniform vec3 uColB;
+uniform float uLevel;
 out vec4 fragColor;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -18,12 +19,12 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + 11.0; a *= 0.5; }
+  for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + 11.0; a *= 0.5; }
   return v;
 }
 void main() {
   vec2 uv = (FlutterFragCoord().xy - 0.5 * uSize) / min(uSize.x, uSize.y);
-  float t = uTime * 0.15;
+  float t = uTime * (0.10 + uLevel * 0.12);
   float r = length(uv);
   float ang = atan(uv.y, uv.x);
   // Swirl: faster with the mids.
@@ -35,6 +36,6 @@ void main() {
   float glow = pow(n, 2.2) * (0.8 + uBass * 1.6) + core * (0.5 + uBeat);
   vec3 col = mix(uColA, uColB, smoothstep(0.2, 0.9, n + uTreble * 0.3));
   col = col * glow + vec3(1.0) * pow(core, 3.0) * (0.3 + uBeat * 0.7);
-  col *= smoothstep(1.4, 0.2, r);
+  col *= smoothstep(1.4, 0.2, r) * (0.35 + uLevel * 1.1);
   fragColor = vec4(col, 1.0);
 }

@@ -35,6 +35,26 @@ enum BarsMode {
   const BarsMode(this.label);
 }
 
+/// The visualiser's play controls.
+enum VizControls {
+  off('Off'),
+  auto('Show on tap'),
+  on('Always');
+
+  final String label;
+  const VizControls(this.label);
+}
+
+/// When the visualiser changes style by itself.
+enum VizCycle {
+  off('Never'),
+  song('Every song'),
+  timer('On a timer');
+
+  final String label;
+  const VizCycle(this.label);
+}
+
 enum NavStyle {
   auto('Automatic'),
   rail('Side rail'),
@@ -295,6 +315,22 @@ class Settings extends ChangeNotifier {
   // Visualiser.
   String get visualizer => _p.getString('visualizer') ?? 'bars';
   set visualizer(String v) => _set('visualizer', v);
+  bool get vizClock => _p.getBool('vizClock') ?? false;
+  set vizClock(bool v) => _set('vizClock', v);
+  VizControls get vizControls =>
+      VizControls.values.where((v) => v.name == _p.getString('vizControls')).firstOrNull ?? VizControls.auto;
+  set vizControls(VizControls v) => _set('vizControls', v.name);
+  VizCycle get vizCycle =>
+      VizCycle.values.where((v) => v.name == _p.getString('vizCycle')).firstOrNull ?? VizCycle.off;
+  set vizCycle(VizCycle v) => _set('vizCycle', v.name);
+
+  /// Minutes between styles with [VizCycle.timer].
+  int get vizCycleMinutes => (_p.getInt('vizCycleMinutes') ?? 2).clamp(1, 30);
+  set vizCycleMinutes(int v) => _set('vizCycleMinutes', v);
+
+  /// Show the song's title for a moment when it changes.
+  bool get vizSongTitle => _p.getBool('vizSongTitle') ?? true;
+  set vizSongTitle(bool v) => _set('vizSongTitle', v);
 
   /// Day & night: light from [dayStarts] to [nightStarts] (hours), then
   /// dark (or black with [nightBlack]).

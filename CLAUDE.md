@@ -28,7 +28,8 @@ Same workflow as Sisyphus and Darkroom (Delectible/...).
   at arm's length. Phone portrait must still work.
 - Animations are short (200–450 ms) and all go through `motion()` so the
   Animations switch turns them off.
-- No image or audio assets: placeholder covers are drawn in code.
+- Assets are fine where they help (GPU shaders live in `shaders/`);
+  placeholder covers are drawn in code.
 - No real brand names in the app or listings.
 
 ## Never

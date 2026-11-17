@@ -17,6 +17,7 @@ import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/widgets/visualizer_painter.dart' show VizShaders;
 import 'package:roadie/core/updater.dart';
 import 'package:roadie/core/tag_fixer.dart';
 import 'package:roadie/core/metadata.dart';
@@ -173,15 +174,33 @@ void main() {
     await _settle(tester);
     await a.player.playAll(a.library.albums[0].songs, start: 2);
     await _settle(tester);
+    await tester.runAsync(VizShaders.load);
+    a.settings.vizClock = true;
     final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
     unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const VisualizerScreen(simulated: true))));
     await _settle(tester);
     for (final v in VizStyle.values) {
       a.settings.visualizer = v.name;
       // Let the controls hide and the feed get going.
-      await _settle(tester, 4600);
+      await _settle(tester, 5200);
       await shot(tester, 'car_viz_${v.index + 1}_${v.name}');
     }
+    expect(tester.takeException(), isNull);
+    // Portrait too.
+    setScreen(tester, phone);
+    for (final v in VizStyle.values) {
+      a.settings.visualizer = v.name;
+      await _settle(tester, 1200);
+      await shot(tester, 'phone_viz_${v.index + 1}_${v.name}');
+    }
+    setScreen(tester, car);
+    // Controls always on: the bar along the bottom.
+    a.settings.vizControls = VizControls.on;
+    a.settings.visualizer = VizStyle.bars.name;
+    await _settle(tester, 1500);
+    await shot(tester, 'car_viz_controls_on');
+    a.settings.vizControls = VizControls.auto;
+    a.settings.vizClock = false;
     // Styles cross-fade: halfway through, both are on screen.
     a.settings.visualizer = VizStyle.bars.name;
     await _settle(tester, 1000);
