@@ -6,6 +6,15 @@ import 'http.dart';
 import 'models.dart';
 import 'native.dart';
 
+/// Album names that mean "no album" (a download folder, a player's stand-in).
+String realAlbum(String a) =>
+    RegExp(
+      r'^\s*(singles?|unknown album|<unknown>|unknown|no album|none)\s*$',
+      caseSensitive: false,
+    ).hasMatch(a)
+    ? ''
+    : a;
+
 /// Tags for one file. Empty strings mean "not known".
 class TagValues {
   final String title, artist, album, albumArtist, genre, year, track, trackTotal, disc;
@@ -31,7 +40,7 @@ class TagValues {
     return TagValues(
       title: s('title'),
       artist: s('artist'),
-      album: s('album'),
+      album: realAlbum(s('album')),
       albumArtist: s('albumArtist'),
       genre: s('genre'),
       year: s('year'),
@@ -48,7 +57,7 @@ class TagValues {
   factory TagValues.ofSong(Song s) => TagValues(
     title: s.title == s.fileName ? '' : s.title,
     artist: s.artist == 'Unknown artist' ? '' : s.artist,
-    album: s.album == 'Unknown album' ? '' : s.album,
+    album: realAlbum(s.album == 'Unknown album' ? '' : s.album),
     albumArtist: s.albumArtist == 'Unknown artist' ? '' : s.albumArtist,
     genre: s.genre == 'Unknown genre' ? '' : s.genre,
     year: s.year > 0 ? '${s.year}' : '',
@@ -130,7 +139,8 @@ TagValues guessFromPath(String path) {
     album = parts[parts.length - 2];
     if (artist.isEmpty && parts.length >= 4) artist = parts[parts.length - 3];
     // A folder named like the storage root or "Music" isn't an album.
-    if (RegExp(r'^(music|download|downloads|roadie|0|emulated)$', caseSensitive: false).hasMatch(album)) {
+    if (RegExp(r'^(music|download|downloads|roadie|0|emulated)$', caseSensitive: false).hasMatch(album) ||
+        realAlbum(album).isEmpty) {
       album = '';
     }
   }
@@ -143,9 +153,18 @@ class MbMatch {
   final String title, artist, album, albumArtist, date, genre;
   final int track, trackTotal, disc, score;
   final Duration? length;
-  final String releaseType, country;
+  final String releaseType, country, releaseGroupId;
 
-  const MbMatch({
+  /// A live recording / release, and whether the file asked for one.
+  final bool live, liveWanted;
+
+  /// The cover found for it (large, and a small one for lists); '' if none.
+  String coverUrl = '', coverThumb = '';
+
+  /// Official, Bootleg, Promotion ...
+  String status = '';
+
+  MbMatch({
     required this.recordingId,
     required this.releaseId,
     required this.artistId,
@@ -162,6 +181,9 @@ class MbMatch {
     required this.length,
     required this.releaseType,
     required this.country,
+    this.releaseGroupId = '',
+    this.live = false,
+    this.liveWanted = false,
   });
 
   String get year => date.length >= 4 ? date.substring(0, 4) : '';
@@ -253,7 +275,21 @@ class MusicBrainz {
       recs = (data as Map?)?['recordings'] as List? ?? const [];
       if (recs.isNotEmpty) break;
     }
+    String norm(String x) => x
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[][^\)\]]*[\)\]]'), ' ')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+        .trim();
+    final liveRe = RegExp(r'\blive\b|unplugged|in concert|\bsessions?\b', caseSensitive: false);
+    final liveWanted = liveRe.hasMatch('$title $album');
+    // Other cuts of a song: wrong unless the file says so.
+    final variantRe = RegExp(
+      r'\b(remix|mix|instrumental|karaoke|acoustic|demo|edit|version|cover|tribute|8-bit|lullaby)\b',
+      caseSensitive: false,
+    );
+    final variantsWanted = variantRe.allMatches(title.toLowerCase()).map((m) => m[0]!).toSet();
     final out = <MbMatch>[];
+    final firstYear = <String, String>{};
     for (final r in recs.cast<Map<Object?, Object?>>()) {
       final score = (r['score'] as num?)?.toInt() ?? 0;
       final len = (r['length'] as num?)?.toInt();
@@ -264,19 +300,26 @@ class MusicBrainz {
       final artistId = artistCredit != null && artistCredit.isNotEmpty
           ? '${((artistCredit.first as Map)['artist'] as Map?)?['id'] ?? ''}'
           : '';
-      for (final rel in (r['releases'] as List? ?? const []).cast<Map<Object?, Object?>>().take(4)) {
+      final recTitle = '${r['title'] ?? title}';
+      final recLive = liveRe.hasMatch('${r['disambiguation'] ?? ''} $recTitle');
+      final first = '${r['first-release-date'] ?? ''}';
+      if (first.length >= 4) firstYear['${r['id']}'] = first.substring(0, 4);
+      for (final rel in (r['releases'] as List? ?? const []).cast<Map<Object?, Object?>>().take(8)) {
         final media = (rel['media'] as List? ?? const []).cast<Map<Object?, Object?>>();
         final m = media.isEmpty ? const <Object?, Object?>{} : media.first;
         final tr = (m['track'] as List? ?? const []).cast<Map<Object?, Object?>>();
         final rg = rel['release-group'] as Map?;
+        final type =
+            '${rg?['primary-type'] ?? ''}${rg?['secondary-types'] is List && (rg!['secondary-types'] as List).isNotEmpty ? ' (${(rg['secondary-types'] as List).join(', ')})' : ''}';
+        final relTitle = '${rel['title'] ?? ''}';
         out.add(
           MbMatch(
             recordingId: '${r['id']}',
             releaseId: '${rel['id']}',
             artistId: artistId,
-            title: '${r['title'] ?? title}',
+            title: recTitle,
             artist: _credit(artistCredit),
-            album: '${rel['title'] ?? ''}',
+            album: relTitle,
             albumArtist: rel['artist-credit'] != null ? _credit(rel['artist-credit']) : _credit(artistCredit),
             date: '${rel['date'] ?? r['first-release-date'] ?? ''}',
             genre: genre,
@@ -285,33 +328,136 @@ class MusicBrainz {
             disc: (m['position'] as num?)?.toInt() ?? 1,
             score: score,
             length: len == null ? null : Duration(milliseconds: len),
-            releaseType:
-                '${rg?['primary-type'] ?? ''}${rg?['secondary-types'] is List && (rg!['secondary-types'] as List).isNotEmpty ? ' (${(rg['secondary-types'] as List).join(', ')})' : ''}',
+            releaseType: type,
             country: '${rel['country'] ?? ''}',
-          ),
+            releaseGroupId: '${rg?['id'] ?? ''}',
+            live: recLive || type.contains('Live') || liveRe.hasMatch(relTitle),
+            liveWanted: liveWanted,
+          )..status = '${rel['status'] ?? ''}',
         );
       }
     }
+    final wantAlbum = norm(album);
+    final wantTitle = norm(title);
     int rank(MbMatch m) {
       var v = m.score * 10;
-      if (m.releaseType == 'Album') v += 60;
-      if (m.releaseType.contains('Compilation')) v -= 80;
-      if (m.releaseType.contains('Live')) v -= 40;
+      final type = m.releaseType;
+      if (type == 'Album') v += 60;
+      if (type.contains('Compilation')) v -= 150;
+      if (type.contains('Soundtrack')) v -= 30;
+      if (type.contains('Remix') || type.contains('DJ-mix') || type.contains('Demo')) v -= 150;
+      if (m.live && !liveWanted) v -= 400;
+      if (m.status == 'Official') v += 30;
+      if (m.status == 'Bootleg' || m.status == 'Promotion') v -= 200;
+      final got = norm(m.album);
+      final albumMatches = wantAlbum.isNotEmpty && (got == wantAlbum || got.contains(wantAlbum));
+      // A single / EP only when the file says it's from one.
+      if ((type.startsWith('Single') || type.startsWith('EP')) && !albumMatches) v -= 90;
+      if (wantAlbum.isNotEmpty) {
+        if (got == wantAlbum) {
+          v += 120;
+        } else if (albumMatches || wantAlbum.contains(got)) {
+          v += 60;
+        } else if (wantAlbum.split(' ').where((w) => w.length > 2).any(got.split(' ').contains)) {
+          v += 25;
+        }
+      }
+      if (norm(m.title) == wantTitle) v += 40;
+      final extra = variantRe.allMatches(m.title.toLowerCase()).map((x) => x[0]!).toSet()
+        ..removeAll(variantsWanted);
+      if (extra.isNotEmpty) v -= 300;
       if (length != null && m.length != null) {
         final off = (m.length! - length).inSeconds.abs();
         v += off <= 3 ? 80 : (off <= 10 ? 30 : -120);
       }
+      // The song's first release (the original album, not a later reissue).
+      if (m.year.isNotEmpty && m.year == firstYear[m.recordingId]) v += 25;
       if (m.year.isNotEmpty) v += 5;
-      // The album the file says it's from (any of its words).
-      final words = album.toLowerCase().split(RegExp(r'\W+')).where((w) => w.length > 2);
-      if (words.isNotEmpty && words.any(m.album.toLowerCase().contains)) v += 40;
+      if (m.coverUrl.isNotEmpty) v += 150;
       return v;
     }
 
-    out.sort((a, b) => rank(b).compareTo(rank(a)));
-    // One entry per release.
-    final seen = <String>{};
-    return out.where((m) => seen.add(m.releaseId)).take(12).toList();
+    List<MbMatch> best() {
+      out.sort((a, b) => rank(b).compareTo(rank(a)));
+      // One entry per release.
+      final seen = <String>{};
+      return out.where((m) => seen.add(m.releaseId)).toList();
+    }
+
+    var list = best();
+    // Live takes only when nothing else fits.
+    if (!liveWanted && list.any((m) => !m.live)) list = list.where((m) => !m.live).toList();
+    // A match without a cover shouldn't win: look up covers for the leaders.
+    await Future.wait(list.take(10).map(findCover));
+    out
+      ..clear()
+      ..addAll(list);
+    return best().take(12).toList();
+  }
+
+  static final _covers = <String, Future<(String, String)?>>{};
+
+  /// Fills [m]'s cover: its release's front, else any release in its group
+  /// (the same album, another pressing), else Deezer's album search.
+  static Future<void> findCover(MbMatch m) async {
+    if (m.coverUrl.isNotEmpty) return;
+    final found =
+        await _caa('release', m.releaseId) ??
+        await _caa('release-group', m.releaseGroupId) ??
+        await deezerCover(m.albumArtist.isNotEmpty ? m.albumArtist : m.artist, m.album);
+    if (found != null) {
+      m.coverUrl = found.$1;
+      m.coverThumb = found.$2;
+    }
+  }
+
+  static Future<(String, String)?> _caa(String kind, String id) {
+    if (id.isEmpty) return Future.value();
+    return _covers.putIfAbsent('$kind/$id', () async {
+      try {
+        final d = await Http.json(Uri.parse('https://coverartarchive.org/$kind/$id')) as Map?;
+        final images = (d?['images'] as List? ?? const []).cast<Map<Object?, Object?>>();
+        final front = images.where((i) => i['front'] == true).firstOrNull ?? images.firstOrNull;
+        if (front == null) return null;
+        final th = front['thumbnails'] as Map? ?? const {};
+        String pick(List<String> keys) => keys
+            .map((k) => '${th[k] ?? ''}')
+            .firstWhere((u) => u.isNotEmpty, orElse: () => '${front['image']}');
+        return (pick(['500', 'large', '1200']), pick(['250', 'small', '500']));
+      } on Object {
+        return null;
+      }
+    });
+  }
+
+  /// An album cover from Deezer's open search (no key), when the album's
+  /// name (and artist) match.
+  static Future<(String, String)?> deezerCover(String artist, String album) {
+    if (album.trim().isEmpty) return Future.value();
+    String n(String x) => x
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[][^\)\]]*[\)\]]'), ' ')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+        .trim();
+    return _covers.putIfAbsent('deezer/${n(artist)}/${n(album)}', () async {
+      try {
+        final q = [if (artist.isNotEmpty) 'artist:"${_q(artist)}"', 'album:"${_q(album)}"'].join(' ');
+        final d =
+            await Http.json(Uri.https('api.deezer.com', '/search/album', {'q': q, 'limit': '10'})) as Map?;
+        final hits = (d?['data'] as List? ?? const []).cast<Map<Object?, Object?>>();
+        for (final h in hits) {
+          final t = n('${h['title'] ?? ''}');
+          final a = n('${(h['artist'] as Map?)?['name'] ?? ''}');
+          final albumOk = t == n(album) || t.startsWith(n(album)) || n(album).startsWith(t);
+          final artistOk = artist.isEmpty || a == n(artist) || a.contains(n(artist)) || n(artist).contains(a);
+          final big = '${h['cover_xl'] ?? h['cover_big'] ?? ''}';
+          if (albumOk && artistOk && big.isNotEmpty) return (big, '${h['cover_medium'] ?? big}');
+        }
+      } on Object catch (e) {
+        CrashLog.note('Deezer cover lookup failed: $e');
+      }
+      return null;
+    });
   }
 
   /// Genre for a release (its own, else its release group's), when the
@@ -331,13 +477,19 @@ class MusicBrainz {
     }
   }
 
-  /// The release's front cover (500 px) saved to [dir], or null.
-  static Future<String?> cover(String releaseId, String dir) async {
-    if (releaseId.isEmpty) return null;
-    final file = File('$dir/cover_$releaseId.jpg');
-    if (file.existsSync()) return file.path;
+  /// The match's cover saved to [dir] (see [findCover]), or null.
+  static Future<String?> cover(MbMatch m, String dir) async {
+    if (m.releaseId.isEmpty) return null;
+    final file = File('$dir/cover_${m.releaseId}.jpg');
+    if (file.existsSync() && file.lengthSync() > 1024) return file.path;
+    await findCover(m);
+    if (m.coverUrl.isEmpty) return null;
     try {
-      final b = await Http.bytes(Uri.parse('https://coverartarchive.org/release/$releaseId/front-500'));
+      final b = await Http.bytes(Uri.parse(m.coverUrl));
+      // A real picture (JPEG / PNG), not an error page.
+      final jpeg = b.length > 2 && b[0] == 0xFF && b[1] == 0xD8;
+      final png = b.length > 4 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47;
+      if (b.length < 1024 || !(jpeg || png)) return null;
       await file.parent.create(recursive: true);
       await file.writeAsBytes(b);
       return file.path;

@@ -41,6 +41,7 @@ class TagFixer extends ChangeNotifier {
     if (list.isEmpty) return null;
     final m = list.first;
     if (m.score < 90) return null;
+    if (m.live && !m.liveWanted) return null;
     if (m.length != null && length > Duration.zero && (m.length! - length).inSeconds.abs() > 10) return null;
     return m;
   }
@@ -51,7 +52,7 @@ class TagFixer extends ChangeNotifier {
     if (tags.genre.isEmpty) {
       tags = tags.fill(TagValues(genre: await MusicBrainz.releaseGenre(m.releaseId)));
     }
-    final cover = await MusicBrainz.cover(m.releaseId, await coverCacheDir());
+    final cover = await MusicBrainz.cover(m, await coverCacheDir());
     await applyTags(path, tags, cover: cover);
   }
 

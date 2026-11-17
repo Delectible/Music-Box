@@ -52,6 +52,7 @@ class Library extends ChangeNotifier {
       return;
     }
     _all = await source.songs();
+    source.forgetArt();
     _rebuild();
   }
 

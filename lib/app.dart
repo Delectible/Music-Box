@@ -11,6 +11,7 @@ import 'core/preview.dart';
 import 'core/scope.dart';
 import 'core/settings.dart';
 import 'core/tag_fixer.dart';
+import 'core/updater.dart';
 import 'core/theme.dart';
 import 'screens/get_music_screen.dart';
 import 'screens/home_screen.dart';
@@ -125,6 +126,8 @@ class _RoadieAppState extends State<RoadieApp> {
     _downloads.addListener(_report);
     widget.settings.addListener(_bars);
     _bars();
+    // The GitHub APK looks for a newer build (does nothing elsewhere).
+    unawaited(Updater.instance.start());
     PlayerSheet.opener = (_) {
       final nav = _nav.currentState;
       if (nav == null || widget.player.current == null) return;

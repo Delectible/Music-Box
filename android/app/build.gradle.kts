@@ -50,6 +50,12 @@ android {
         }
     }
 
+    // The APK for GitHub Releases updates itself (-Psideload=true adds the
+    // install permission); the Play build doesn't carry it.
+    if (project.findProperty("sideload") == "true") {
+        sourceSets.getByName("release").manifest.srcFile("src/sideload/AndroidManifest.xml")
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (uploadKeystore != null) "upload" else "test")

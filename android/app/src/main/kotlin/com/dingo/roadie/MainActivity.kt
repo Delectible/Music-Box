@@ -71,6 +71,9 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp").setMethodCallHandler { call, result ->
             Ytdlp.handle(this, call, result)
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/update").setMethodCallHandler { call, result ->
+            Updater.handle(this, call, result) { work -> background(result, work) }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/library").setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasPermission" -> result.success(granted())
@@ -415,34 +418,113 @@ class MainActivity : AudioServiceActivity() {
         return map
     }
 
+    /** The album's files (path, newest change) in track order. */
+    private fun albumFiles(albumId: Long): List<File> {
+        val out = ArrayList<File>()
+        try {
+            contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Audio.Media.DATA),
+                "${MediaStore.Audio.Media.ALBUM_ID} = ?", arrayOf("$albumId"), MediaStore.Audio.Media.TRACK,
+            )?.use { c -> while (c.moveToNext()) c.getString(0)?.let { out += File(it) } }
+        } catch (_: Exception) {
+        }
+        return out
+    }
+
+    /**
+     * The album's cover at [size] px, cached. Tries, in order: the picture
+     * inside the album's files (as other players do), Android's own album
+     * thumbnail, then a cover image in the album's folder. The cached file's
+     * name carries the files' newest change, so a cover added by Fix tags
+     * shows up (and a stale "no cover" is forgotten).
+     */
     private fun art(albumId: Long, size: Int): String? {
         if (albumId < 0) return null
         val dir = File(cacheDir, "art").apply { mkdirs() }
-        val file = File(dir, "${albumId}_$size.jpg")
-        val none = File(dir, "${albumId}_$size.none")
+        val files = albumFiles(albumId)
+        val stamp = files.maxOfOrNull { it.lastModified() / 1000 } ?: 0L
+        val file = File(dir, "${albumId}_${size}_$stamp.jpg")
+        val none = File(dir, "${albumId}_${size}_$stamp.none")
         if (file.exists()) return file.path
-        if (none.exists()) return null
-        val bmp: Bitmap? = try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                val uri = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, albumId)
-                contentResolver.loadThumbnail(uri, Size(size, size), null)
-            } else {
-                @Suppress("DEPRECATION")
-                contentResolver.query(
-                    MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Audio.Albums.ALBUM_ART),
-                    "${MediaStore.Audio.Albums._ID} = ?", arrayOf("$albumId"), null,
-                )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-                    ?.let { BitmapFactory.decodeFile(it) }
-                    ?.let { Bitmap.createScaledBitmap(it, size, size * it.height / maxOf(1, it.width), true) }
-            }
-        } catch (_: Exception) {
-            null
-        }
+        // "No cover" is retried after a day (a cover may have been added another way).
+        if (none.exists() && System.currentTimeMillis() - none.lastModified() < 86_400_000L) return null
+        dir.listFiles { f -> f.name.startsWith("${albumId}_${size}_") || f.name.startsWith("${albumId}_$size.") }
+            ?.forEach { it.delete() }
+        val bmp = embeddedArt(files, size) ?: systemArt(albumId, size) ?: folderArt(files, size)
         if (bmp == null) {
             none.createNewFile()
             return null
         }
         FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
         return file.path
+    }
+
+    private fun embeddedArt(files: List<File>, size: Int): Bitmap? {
+        for (f in files.take(6)) {
+            if (!f.exists()) continue
+            val bytes = try {
+                val r = android.media.MediaMetadataRetriever()
+                try {
+                    r.setDataSource(f.path)
+                    r.embeddedPicture
+                } finally {
+                    r.release()
+                }
+            } catch (_: Throwable) {
+                null
+            } ?: try {
+                // Tags Android doesn't read (some FLAC / Ogg / ID3 layouts).
+                org.jaudiotagger.audio.AudioFileIO.read(f).tag?.firstArtwork?.binaryData
+            } catch (_: Throwable) {
+                null
+            }
+            if (bytes != null && bytes.isNotEmpty()) decodeSized(size) { o -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o) }?.let { return it }
+        }
+        return null
+    }
+
+    private fun systemArt(albumId: Long, size: Int): Bitmap? = try {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val uri = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, albumId)
+            contentResolver.loadThumbnail(uri, Size(size, size), null)
+        } else {
+            @Suppress("DEPRECATION")
+            contentResolver.query(
+                MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Audio.Albums.ALBUM_ART),
+                "${MediaStore.Audio.Albums._ID} = ?", arrayOf("$albumId"), null,
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                ?.let { p -> decodeSized(size) { o -> BitmapFactory.decodeFile(p, o) } }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** cover.jpg / folder.jpg / front.png ... next to the files. */
+    private fun folderArt(files: List<File>, size: Int): Bitmap? {
+        val folders = files.mapNotNull { it.parentFile }.distinct().take(3)
+        val names = listOf("cover", "folder", "front", "album", "albumart", "albumartsmall")
+        for (d in folders) {
+            val images = d.listFiles { f ->
+                f.isFile && f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp")
+            }?.toList() ?: continue
+            val pick = images.firstOrNull { it.nameWithoutExtension.lowercase() in names }
+                ?: images.firstOrNull { names.any { n -> it.nameWithoutExtension.lowercase().startsWith(n) } }
+                ?: images.singleOrNull()
+                ?: continue
+            decodeSized(size) { o -> BitmapFactory.decodeFile(pick.path, o) }?.let { return it }
+        }
+        return null
+    }
+
+    /** Decodes no bigger than needed, then scales to [size] wide. */
+    private fun decodeSized(size: Int, decode: (BitmapFactory.Options?) -> Bitmap?): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        decode(bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= size && bounds.outHeight / (sample * 2) >= size) sample *= 2
+        val bmp = decode(BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        if (bmp.width <= size) return bmp
+        return Bitmap.createScaledBitmap(bmp, size, maxOf(1, size * bmp.height / bmp.width), true)
     }
 }

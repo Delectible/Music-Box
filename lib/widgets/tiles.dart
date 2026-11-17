@@ -351,8 +351,11 @@ class BigCard extends StatelessWidget {
                         height: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(item.subtitle, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                    // Albums: just the name (the artist took too much room).
+                    if (item.kind != CollectionKind.album) ...[
+                      const SizedBox(height: 4),
+                      Text(item.subtitle, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                    ],
                   ],
                 ),
               ),

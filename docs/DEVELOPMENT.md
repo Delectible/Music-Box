@@ -31,7 +31,8 @@ then `flutter pub get`.
   `Visualizer.kt` streams Android's Visualizer FFT + waveform
   (channel `roadie/visualizer`).
 - `lib/core/metadata.dart` / `tag_fixer.dart`: MusicBrainz lookups (1 a
-  second), Cover Art Archive, file-name guesses, single and batch Fix tags.
+  second), covers (Cover Art Archive release, then release group, then
+  Deezer's album search), file-name guesses, single and batch Fix tags.
 - `lib/core/sources.dart` / `downloads.dart`: Get music sources (Internet
   Archive, Jamendo with a user key, ccMixter, direct link) and the queue
   (2 at a time, Artist/Album/NN Title.ext, then tagged and scanned).
@@ -63,6 +64,13 @@ then `flutter pub get`.
   or measured LUFS, cached in prefs `gains`).
 - `lib/core/lyrics.dart`, `quality.dart`, `smart.dart`: lyrics (LRCLIB /
   .lrc), quality badge, smart playlists and the duplicate finder.
+- `lib/core/updater.dart` + `Updater.kt` (channel `roadie/update`) +
+  `screens/update_screen.dart`: the GitHub APK updates itself. Only builds
+  made with `-Psideload=true` (the workflow's APK, not the Play bundle)
+  get `src/sideload/AndroidManifest.xml`: REQUEST_INSTALL_PACKAGES and the
+  FileProvider. Releases tagged `build-<n>` (n = versionCode) newer than
+  the installed one are offered; the APK goes to cache/updates and is
+  checked before Android's installer opens.
 - `lib/core/crash_log.dart`: Dart and native errors to
   `files/problems.log` and `native_crash.txt`, shown in Settings > Problem
   reports.

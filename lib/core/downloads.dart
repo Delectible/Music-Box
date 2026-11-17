@@ -551,7 +551,7 @@ class Downloads extends ChangeNotifier {
           if (tags.genre.isEmpty) {
             tags = tags.fill(TagValues(genre: await MusicBrainz.releaseGenre(m.releaseId)));
           }
-          cover = await MusicBrainz.cover(m.releaseId, await coverCacheDir());
+          cover = await MusicBrainz.cover(m, await coverCacheDir());
         }
       } on Object catch (e) {
         CrashLog.note('MusicBrainz lookup for download failed: $e');

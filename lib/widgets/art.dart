@@ -20,6 +20,10 @@ Widget nowArtShuttle(
   BuildContext to,
 ) {
   final big = (direction == HeroFlightDirection.push ? to.widget : from.widget) as Hero;
+  // The player's picture has a flight of its own (the record's label):
+  // use it both ways, not just on the way in.
+  final own = big.flightShuttleBuilder;
+  if (own != null && own != nowArtShuttle) return own(flight, animation, direction, from, to);
   return FittedBox(child: big.child);
 }
 

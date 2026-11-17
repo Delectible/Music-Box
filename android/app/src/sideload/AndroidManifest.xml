@@ -1,0 +1,20 @@
+<!--
+  Only in the APK on GitHub Releases (built with -Psideload=true): Roadie
+  installs its own updates (Settings > Updates). The Play Store build leaves
+  this out: Play updates it, and doesn't allow apps that install apps.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <!-- Hands the downloaded update to Android's installer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+    </application>
+</manifest>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The update download folder (cache/updates), shared with the installer only. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

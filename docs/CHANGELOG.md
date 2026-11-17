@@ -203,6 +203,42 @@
    and tablet sizes at 100 / 130 / 160 % text and fails on any overflow.
    (0.4.3)
 
+64. Fix tags picked matches without a cover, and live albums for studio
+   songs. Matches are now ranked with covers counted (the release's, else
+   any pressing of the same album, else Deezer's open album search), live /
+   remix / karaoke / demo versions only when the file says so, singles and
+   EPs only when the file's album is one, compilations and bootlegs lower,
+   the song's first release preferred. A live match is never applied
+   without asking. (0.4.4)
+65. Covers inside the files didn't show for most songs (another player
+   showed them). Covers now come from the picture in the album's files
+   (Android's reader, then jaudiotagger), then Android's album thumbnail,
+   then cover.jpg / folder.jpg in the folder; "no cover" was remembered
+   forever, now it's retried once the files change (or after a day), so
+   Fix tags' covers show up. (0.4.4)
+66. Songs showed under a "Singles" album (the download folder's name). It
+   isn't treated as an album any more: Fix tags (and downloads) look up the
+   real album. (0.4.4)
+67. Record player: the record spins up as the player opens (the flying
+   label turns with it, so it lands exactly where the record is), rolls on
+   to upright, squares off and loses its hole as it flies back (the close
+   used the mini player's flight, which snapped), half the speed, and runs
+   down slowly on pause. Smoother: the record, its shadow and the play bar
+   ripple each draw on their own layer, and the blurred backdrop is
+   blurred once instead of every frame. (0.4.4)
+68. Swipe the player's picture to skip, in every layout: the record slides
+   off and the next one slides in (a jukebox change), the cover turns away
+   like a card, Glance's picture and titles glide. It follows the finger
+   and springs back if not swiped far enough. (0.4.4)
+69. Big album cards: no artist line (too much room). (0.4.4)
+70. Updates for the APK from GitHub: at start (when online) Roadie looks
+   for a newer build; an update button shows in the top bar. Update page:
+   this version → the new one, what's new for every newer build, size,
+   progress bar with speed, cancel, resume after a dropped connection. The
+   file is checked (size, GitHub's checksum, it's Roadie, newer, same
+   signing key) before Android's installer opens, and removed once
+   installed. The Play build doesn't include it. (0.4.4)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

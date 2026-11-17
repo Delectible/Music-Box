@@ -285,18 +285,22 @@ class _SeekBarState extends State<SeekBar> with TickerProviderStateMixin {
                           if (v != null) p.seek(Duration(milliseconds: v.round()));
                         }
                       : null,
-                  child: SizedBox(
-                    height: 40,
-                    width: double.infinity,
-                    child: CustomPaint(
-                      painter: _WavePainter(
-                        progress: total > 0 ? pos / total : 0,
-                        phase: _phase,
-                        amp: _amp,
-                        played: cs.primary,
-                        rest: c.withValues(alpha: 0.16),
-                        thickness: widget.thickness,
-                        dragging: _drag != null,
+                  // Its own layer: the ripple redraws every frame without
+                  // making the rest of the player (the record) redraw too.
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      height: 40,
+                      width: double.infinity,
+                      child: CustomPaint(
+                        painter: _WavePainter(
+                          progress: total > 0 ? pos / total : 0,
+                          phase: _phase,
+                          amp: _amp,
+                          played: cs.primary,
+                          rest: c.withValues(alpha: 0.16),
+                          thickness: widget.thickness,
+                          dragging: _drag != null,
+                        ),
                       ),
                     ),
                   ),

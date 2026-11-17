@@ -17,6 +17,7 @@ import 'package:roadie/core/settings.dart';
 import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
+import 'package:roadie/core/updater.dart';
 import 'package:roadie/core/lyrics.dart';
 import 'package:roadie/core/quality.dart';
 import 'package:roadie/screens/file_actions.dart';
@@ -298,6 +299,72 @@ void main() {
     }
     await _settle(tester);
     await shot(tester, 'phone_open_done');
+
+    // Skipping by swiping the record: half way through the swap.
+    final first = a.player.current!.title;
+    await tester.timedDragFrom(
+      const Offset(206, 300),
+      const Offset(-220, 0),
+      const Duration(milliseconds: 200),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+    await shot(tester, 'phone_record_swap');
+    await _settle(tester);
+    expect(a.player.current!.title, isNot(first));
+
+    // Closing: the label rolls upright, squares off and loses its hole on the way.
+    await tester.tap(find.byTooltip('Close'));
+    for (final ms in [100, 200, 300]) {
+      await tester.pump(const Duration(milliseconds: 100));
+      await shot(tester, 'phone_close_${ms}ms');
+    }
+    await _settle(tester);
+    a.engine.close();
+  });
+
+  testWidgets('update: available, downloading', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final release = Release(
+      build: 31,
+      version: '0.4.4',
+      notes: 'Record player: spins up as it opens, slows to a stop on pause, swipe to change records (0.4.4)',
+      page: '',
+      apkUrl: '',
+      size: 96 * 1048576,
+      sha256: '',
+      date: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    final older = Release(
+      build: 30,
+      version: '0.4.3',
+      notes: 'Layout sweep: rows sized to their text (0.4.3)',
+      page: '',
+      apkUrl: '',
+      size: 95 * 1048576,
+      sha256: '',
+      date: DateTime.now().subtract(const Duration(days: 4)),
+    );
+    final u = Updater.instance;
+    u.debugSet(stage: UpdateStage.available, latest: release, newer: [release, older]);
+    await _settle(tester);
+    expect(find.byTooltip('Update available'), findsOneWidget);
+    await shot(tester, 'car_update_button');
+    await tester.tap(find.byTooltip('Update available'));
+    await _settle(tester);
+    expect(find.text('Download and install'), findsOneWidget);
+    await shot(tester, 'car_update_available');
+    u.debugSet(stage: UpdateStage.downloading, latest: release, newer: [release, older], progress: 0.42);
+    u.received = (96 * 1048576 * 0.42).round();
+    u.speed = 2.4 * 1048576;
+    await _settle(tester);
+    await shot(tester, 'car_update_downloading');
+    setScreen(tester, phone);
+    await _settle(tester);
+    await shot(tester, 'phone_update_downloading');
+    u.debugSet(stage: UpdateStage.idle);
     a.engine.close();
   });
 

@@ -213,7 +213,7 @@ class _FixTagsState extends State<_FixTags> {
                       for (final m in _results!)
                         ListTile(
                           minTileHeight: 72,
-                          leading: _CoverThumb(releaseId: m.releaseId),
+                          leading: _CoverThumb(match: m),
                           title: Text(
                             '${m.title} · ${m.artist}',
                             maxLines: 1,
@@ -248,14 +248,16 @@ class _FixTagsState extends State<_FixTags> {
 }
 
 class _CoverThumb extends StatelessWidget {
-  final String releaseId;
-  const _CoverThumb({required this.releaseId});
+  final MbMatch match;
+  const _CoverThumb({required this.match});
 
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(6),
     child: Image.network(
-      'https://coverartarchive.org/release/$releaseId/front-250',
+      match.coverThumb.isNotEmpty
+          ? match.coverThumb
+          : 'https://coverartarchive.org/release/${match.releaseId}/front-250',
       width: 52,
       height: 52,
       fit: BoxFit.cover,

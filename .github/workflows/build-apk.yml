@@ -55,12 +55,13 @@ jobs:
             echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: signing with the public test key."
           fi
       # versionCode = run number, so every build is newer than the last (Play
-      # refuses to take the same versionCode twice).
+      # refuses to take the same versionCode twice; the app's updater compares
+      # it with the build-<n> tag). Only the APK can install its own updates.
       - name: Build the APK (sideloading) and app bundle (Play Store)
         env:
           ROADIE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build apk --release --build-number=${{ github.run_number }} -Psideload=true
           flutter build appbundle --release --build-number=${{ github.run_number }}
       - run: |
           mkdir dist

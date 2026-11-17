@@ -10,6 +10,7 @@ import 'get_music_screen.dart';
 import 'library_view.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
+import 'update_screen.dart';
 import 'visualizer_screen.dart';
 
 IconData tabIcon(LibraryTab t, {bool selected = false}) => switch (t) {
@@ -237,6 +238,8 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
+          // Only for the APK from GitHub, when a newer build is out.
+          const UpdateButton(),
           if (tab != LibraryTab.get)
             IconButton(
               iconSize: 28,

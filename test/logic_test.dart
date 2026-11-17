@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadie/core/library.dart';
+import 'package:roadie/core/metadata.dart';
+import 'package:roadie/core/updater.dart';
 import 'package:roadie/core/models.dart';
 import 'package:roadie/core/player.dart';
 import 'package:roadie/core/settings.dart';
@@ -8,6 +10,43 @@ import 'package:roadie/core/source.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('"Singles" and other stand-ins are not albums', () {
+    expect(realAlbum('Singles'), '');
+    expect(realAlbum(' single '), '');
+    expect(realAlbum('Unknown album'), '');
+    expect(realAlbum('Singles Going Steady (Deluxe)'), 'Singles Going Steady (Deluxe)');
+    expect(guessFromPath('/storage/emulated/0/Music/Lumen Coast/Singles/Exit 42.mp3').album, '');
+    expect(TagValues.fromMap({'album': 'Singles', 'title': 'x'}).album, '');
+  });
+
+  test('a GitHub release becomes an update (APK builds only)', () {
+    Map<String, Object?> rel(String tag, {bool pre = false, String asset = 'Roadie-31.apk'}) => {
+      'tag_name': tag,
+      'prerelease': pre,
+      'draft': false,
+      'body': 'Record spins up smoothly (0.4.4)',
+      'html_url': 'https://example.com/r',
+      'published_at': '2026-11-01T10:00:00Z',
+      'assets': [
+        {
+          'name': asset,
+          'browser_download_url': 'https://example.com/a.apk',
+          'size': 1234,
+          'digest': 'sha256:ABC',
+        },
+      ],
+    };
+    final r = Release.fromJson(rel('build-31'))!;
+    expect(r.build, 31);
+    expect(r.version, '0.4.4');
+    expect(r.size, 1234);
+    expect(r.sha256, 'abc');
+    expect(r.label, '0.4.4 · build 31');
+    expect(Release.fromJson(rel('build-32', pre: true)), isNull);
+    expect(Release.fromJson(rel('v1.0')), isNull);
+    expect(Release.fromJson(rel('build-33', asset: 'notes.txt')), isNull);
+  });
+
   late Library lib;
   late Player player;
   late SilentEngine engine;

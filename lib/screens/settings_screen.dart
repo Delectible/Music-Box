@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_info.dart';
+import '../core/updater.dart';
 import '../core/scope.dart';
 import '../core/levelling.dart';
 import '../core/settings.dart';
@@ -10,6 +11,7 @@ import 'folders_screen.dart';
 import 'get_music_screen.dart';
 import 'home_screen.dart';
 import 'problems_screen.dart';
+import 'update_screen.dart';
 
 void openSettings(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -349,6 +351,19 @@ class SettingsScreen extends StatelessWidget {
                   leading: Icon(Icons.info_outline_rounded),
                   title: Text('${AppInfo.name} ${AppInfo.version}'),
                   subtitle: Text(AppInfo.latest),
+                ),
+                ListenableBuilder(
+                  listenable: Updater.instance,
+                  builder: (context, _) {
+                    final u = Updater.instance;
+                    if (!u.supported) return const SizedBox.shrink();
+                    return ListTile(
+                      leading: const Icon(Icons.system_update_rounded),
+                      title: const Text('Updates'),
+                      subtitle: Text(u.hasUpdate ? '${u.latest!.label} is out' : 'Check for a newer build'),
+                      onTap: () => openUpdate(context),
+                    );
+                  },
                 ),
                 ListTile(
                   leading: const Icon(Icons.bug_report_rounded),

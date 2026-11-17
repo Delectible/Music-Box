@@ -21,6 +21,9 @@ abstract class LibrarySource {
   /// A cover already fetched for [albumId] (this size, else the closest),
   /// so it can show on the first frame. Null if none is known yet.
   String? artNow(int albumId, int size) => null;
+
+  /// Forgets looked-up covers (files changed: a cover may have been added).
+  void forgetArt() {}
 }
 
 class MediaStoreSource implements LibrarySource {
@@ -66,6 +69,12 @@ class MediaStoreSource implements LibrarySource {
 
   @override
   Future<void> scan(List<String> paths) => _ch.invokeMethod('scan', {'paths': paths});
+
+  @override
+  void forgetArt() {
+    _art.clear();
+    _known.removeWhere((_, p) => !File(p).existsSync());
+  }
 }
 
 /// A made-up library (no files, no covers) for tests and screenshots.
@@ -80,6 +89,8 @@ class DemoSource implements LibrarySource {
   Future<void> scan(List<String> paths) async {}
   @override
   String? artNow(int albumId, int size) => null;
+  @override
+  void forgetArt() {}
 
   static const _albums = <(String, String, String, int, List<String>)>[
     (

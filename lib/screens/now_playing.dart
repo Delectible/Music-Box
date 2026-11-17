@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -132,6 +133,34 @@ class _NowPlayingState extends State<NowPlaying> {
   }
 }
 
+final _blurs = <String, Future<ui.Image?>>{};
+
+/// The cover blurred once into a small picture. Blurring the full screen
+/// every frame (as it drifts) was too much for head units; a small, already
+/// blurred picture just gets scaled.
+Future<ui.Image?> _blurred(String path) {
+  final hit = _blurs.remove(path);
+  if (hit != null) return _blurs[path] = hit;
+  if (_blurs.length >= 6) _blurs.remove(_blurs.keys.first);
+  return _blurs[path] = () async {
+    try {
+      final codec = await ui.instantiateImageCodec(await File(path).readAsBytes(), targetWidth: 96);
+      final src = (await codec.getNextFrame()).image;
+      final rec = ui.PictureRecorder();
+      Canvas(rec).drawImage(
+        src,
+        Offset.zero,
+        Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5, tileMode: TileMode.clamp),
+      );
+      final out = await rec.endRecording().toImage(src.width, src.height);
+      src.dispose();
+      return out;
+    } on Object {
+      return null;
+    }
+  }();
+}
+
 /// The cover, blurred, behind everything; or the accent as a soft glow.
 class _Backdrop extends StatelessWidget {
   final Song song;
@@ -154,15 +183,20 @@ class _Backdrop extends StatelessWidget {
               duration: motion(scope.settings, 600),
               child: snap.data == null
                   ? _Glow(key: ValueKey('g${song.albumId}'), color: albumHue(song.albumId))
-                  : _Drift(
+                  : FutureBuilder<ui.Image?>(
                       key: ValueKey(snap.data),
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                        child: Opacity(
-                          opacity: black ? 0.35 : 0.55,
-                          child: Image.file(File(snap.data!), fit: BoxFit.cover, cacheWidth: 160),
-                        ),
-                      ),
+                      future: _blurred(snap.data!),
+                      builder: (context, img) => img.data == null
+                          ? _Glow(color: albumHue(song.albumId))
+                          : _Drift(
+                              child: RawImage(
+                                image: img.data,
+                                fit: BoxFit.cover,
+                                filterQuality: FilterQuality.medium,
+                                color: Colors.white.withValues(alpha: black ? 0.35 : 0.55),
+                                colorBlendMode: BlendMode.modulate,
+                              ),
+                            ),
                     ),
             ),
           )
@@ -519,13 +553,13 @@ class _CoverLayout extends StatelessWidget {
         Widget cover(double size) => GestureDetector(
           onTap: AppScope.of(context).player.toggle,
           child: _Breathe(
-            child: Hero(
-              tag: 'now-art',
-              flightShuttleBuilder: nowArtShuttle,
-              child: _TrackSwitcher(
-                songId: song.id,
-                direction: direction,
-                child: DecoratedBox(
+            child: _SwipeDeck(
+              song: song,
+              direction: direction,
+              style: _DeckStyle.cover,
+              travel: size,
+              builder: (song, live) {
+                final art = DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: artRadius(s.artShape, size),
                     boxShadow: [
@@ -539,8 +573,9 @@ class _CoverLayout extends StatelessWidget {
                     ],
                   ),
                   child: Art(albumId: song.albumId, size: size),
-                ),
-              ),
+                );
+                return live ? Hero(tag: 'now-art', flightShuttleBuilder: nowArtShuttle, child: art) : art;
+              },
             ),
           ),
         );
@@ -652,26 +687,29 @@ class _GlanceLayout extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Hero(
-                      tag: 'now-art',
-                      flightShuttleBuilder: nowArtShuttle,
-                      child: Art(albumId: song.albumId, size: wide ? 140 : 96),
-                    ),
-                    SizedBox(width: wide ? 32 : 20),
-                    Expanded(
-                      child: _TrackSwitcher(
-                        songId: song.id,
-                        direction: direction,
-                        axis: Axis.vertical,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _Titles(song: song, size: wide ? 52 : 36, maxLines: 2),
+                child: _SwipeDeck(
+                  song: song,
+                  direction: direction,
+                  style: _DeckStyle.glance,
+                  travel: box.maxWidth,
+                  builder: (song, live) {
+                    final art = Art(albumId: song.albumId, size: wide ? 140 : 96);
+                    return Row(
+                      children: [
+                        if (live)
+                          Hero(tag: 'now-art', flightShuttleBuilder: nowArtShuttle, child: art)
+                        else
+                          art,
+                        SizedBox(width: wide ? 32 : 20),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: _Titles(song: song, size: wide ? 52 : 36, maxLines: 2),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ),
               const SeekBar(thickness: 12, fontSize: 20),
@@ -793,58 +831,130 @@ class _Record extends StatefulWidget {
   State<_Record> createState() => _RecordState();
 }
 
+/// The record's turn, worked out frame by frame from a speed that eases up
+/// (as the player opens) and runs down slowly (on pause), so the turn never
+/// jumps: the flying label, the landed label and the disc all read it.
 class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
-  // One turn every 1.8 s (33⅓ rpm).
-  late final _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  /// One turn every 3.6 s.
+  static const _fullSpeed = 1 / 3.6; // turns a second
+  static const _spinUp = _fullSpeed / 0.6; // full speed in 0.6 s
+  static const _runDown = _fullSpeed / 1.8; // stops over 1.8 s
+
+  final _turns = ValueNotifier(0.0);
+  double _speed = 0;
+  bool _on = false;
+  Duration _last = Duration.zero;
+  late final _ticker = createTicker(_tick);
+
+  void _tick(Duration t) {
+    final dt = ((t - _last).inMicroseconds / 1e6).clamp(0.0, 0.1);
+    _last = t;
+    final target = _on ? _fullSpeed : 0.0;
+    _speed = _speed < target ? min(target, _speed + _spinUp * dt) : max(target, _speed - _runDown * dt);
+    _turns.value = (_turns.value + _speed * dt) % 1;
+    if (_speed == 0 && !_on) _ticker.stop();
+  }
+
+  void _sync(bool on) {
+    _on = on;
+    if (!AppScope.of(context).settings.animations) {
+      _speed = 0;
+      if (_ticker.isActive) _ticker.stop();
+      return;
+    }
+    if ((on || _speed > 0) && !_ticker.isActive) {
+      _last = Duration.zero;
+      _ticker.start();
+    }
+  }
 
   @override
   void dispose() {
-    _spin.dispose();
+    _ticker.dispose();
+    _turns.dispose();
     super.dispose();
   }
 
   /// The cover as the record's label, with the spindle hole (which shows by [hole]).
-  Widget _label(double size, double hole, {double? radius}) => SizedBox.square(
+  Widget _label(Song song, double size, double hole, {double? radius}) => SizedBox.square(
     dimension: size * 0.42,
     child: Stack(
       alignment: Alignment.center,
       children: [
-        Art(albumId: widget.song.albumId, size: size * 0.42, radius: radius ?? size * 0.21),
-        Opacity(
-          opacity: hole.clamp(0, 1),
-          child: Container(
-            width: size * 0.035,
-            height: size * 0.035,
-            decoration: const BoxDecoration(color: Color(0xFF0D0D0F), shape: BoxShape.circle),
+        Art(albumId: song.albumId, size: size * 0.42, radius: radius ?? size * 0.21),
+        if (hole > 0)
+          Opacity(
+            opacity: hole.clamp(0, 1),
+            child: Container(
+              width: size * 0.035,
+              height: size * 0.035,
+              decoration: const BoxDecoration(color: Color(0xFF0D0D0F), shape: BoxShape.circle),
+            ),
           ),
-        ),
       ],
     ),
   );
 
-  /// The label flying to / from the mini player: it turns back upright, its
-  /// round shape eases to the mini player's square and the hole fades, all
-  /// along the way (rather than jumping at the end).
+  /// The label flying to / from the mini player. Opening, it turns with
+  /// the record as it spins up, so it lands exactly where the record is.
+  /// Closing, it rolls on to upright, its round shape eases into the mini
+  /// player's and the hole fades, all finishing as it lands.
   Widget _shuttle(
-    BuildContext _,
+    BuildContext context,
     Animation<double> a,
     HeroFlightDirection dir,
     BuildContext from,
     BuildContext to,
   ) {
-    final turns = _spin.value;
     final size = widget.size;
+    final song = widget.song;
+    final label = size * 0.42;
+    final small = artRadius(AppScope.of(context).settings.artShape, label).topLeft.x;
+    final start = _turns.value;
+    final rest = start == 0 ? 0.0 : 1 - start; // to the next upright
     return AnimatedBuilder(
-      animation: a,
+      animation: Listenable.merge([a, _turns]),
       builder: (context, _) {
-        final t = Curves.easeInOut.transform(a.value.clamp(0, 1));
+        final t = a.value.clamp(0.0, 1.0); // 1 = in the player
+        final turns = dir == HeroFlightDirection.push ? _turns.value : start + rest * (1 - t);
         return FittedBox(
           child: Transform.rotate(
-            angle: turns * 2 * pi * t,
-            child: _label(size, t, radius: size * 0.42 * (0.12 + 0.38 * t)),
+            angle: turns * 2 * pi,
+            child: _label(song, size, t, radius: small + (label / 2 - small) * t),
           ),
         );
       },
+    );
+  }
+
+  /// One whole record (disc and label). Only the playing one carries the Hero.
+  Widget _record(Song song, bool live) {
+    final size = widget.size;
+    final label = AnimatedBuilder(
+      animation: _turns,
+      builder: (context, child) => Transform.rotate(angle: _turns.value * 2 * pi, child: child),
+      child: RepaintBoundary(child: _label(song, size, 1)),
+    );
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // The shadow stays put; only the disc turns (drawn once, then just rotated).
+          CustomPaint(size: Size.square(size), painter: _VinylShadow()),
+          AnimatedBuilder(
+            animation: _turns,
+            builder: (context, child) => Transform.rotate(angle: _turns.value * 2 * pi, child: child),
+            child: RepaintBoundary(
+              child: CustomPaint(
+                size: Size.square(size),
+                painter: _VinylPainter(Theme.of(context).colorScheme.primary),
+              ),
+            ),
+          ),
+          if (live) Hero(tag: 'now-art', flightShuttleBuilder: _shuttle, child: label) else label,
+        ],
+      ),
     );
   }
 
@@ -855,40 +965,207 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
     return ListenableBuilder(
       listenable: p,
       builder: (context, _) {
-        final on = p.playing && scope.settings.animations;
-        if (on && !_spin.isAnimating) _spin.repeat();
-        if (!on && _spin.isAnimating) _spin.stop();
-        final size = widget.size;
+        _sync(p.playing && scope.settings.animations);
         return GestureDetector(
           onTap: p.toggle,
-          child: SizedBox.square(
-            dimension: size,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                RotationTransition(
-                  turns: _spin,
-                  child: CustomPaint(
-                    size: Size.square(size),
-                    painter: _VinylPainter(Theme.of(context).colorScheme.primary),
-                  ),
-                ),
-                // The label turns with the record but flies in (Hero) unrotated,
-                // so it lands exactly in the middle.
-                _TrackSwitcher(
-                  songId: widget.song.id,
-                  direction: widget.direction,
-                  child: Hero(
-                    tag: 'now-art',
-                    flightShuttleBuilder: _shuttle,
-                    child: RotationTransition(turns: _spin, child: _label(size, 1)),
-                  ),
-                ),
-              ],
-            ),
+          child: _SwipeDeck(
+            song: widget.song,
+            direction: widget.direction,
+            style: _DeckStyle.record,
+            travel: widget.size * 1.25,
+            builder: _record,
           ),
         );
       },
+    );
+  }
+}
+
+/// The record's soft shadow (doesn't turn, so it isn't redrawn as it spins).
+class _VinylShadow extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width / 2;
+    canvas.drawCircle(
+      size.center(Offset.zero).translate(0, r * 0.04),
+      r,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.4)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_VinylShadow old) => false;
+}
+
+enum _DeckStyle { record, cover, glance }
+
+/// The player's picture, which follows a sideways swipe and skips when let
+/// go far enough. Each layout has its own move:
+/// - record: the whole record slides off one side and the next slides in
+///   from the other, dipping slightly as it's swapped (a jukebox change);
+/// - cover: the cover turns away like a card and the next turns in;
+/// - glance: the picture and titles glide and fade.
+class _SwipeDeck extends StatefulWidget {
+  final Song song;
+  final int direction;
+  final _DeckStyle style;
+  final double travel;
+  final Widget Function(Song song, bool live) builder;
+  const _SwipeDeck({
+    required this.song,
+    required this.direction,
+    required this.style,
+    required this.travel,
+    required this.builder,
+  });
+
+  @override
+  State<_SwipeDeck> createState() => _SwipeDeckState();
+}
+
+class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
+  Song? _out;
+  int _dir = 1;
+  double _outFrom = 0; // where the old one was when the skip began (px)
+  double _drag = 0;
+  int? _swiped; // the direction of a swipe waiting for the song to change
+  Timer? _giveUp;
+  late final _swap = AnimationController(vsync: this)
+    ..addStatusListener((st) {
+      if (st == AnimationStatus.completed) setState(() => _out = null);
+    });
+  late final _back = AnimationController(vsync: this)
+    ..addListener(() => setState(() => _drag = _backTween()));
+  double Function() _backTween = () => 0;
+
+  @override
+  void didUpdateWidget(_SwipeDeck old) {
+    super.didUpdateWidget(old);
+    if (old.song.id == widget.song.id) return;
+    final s = AppScope.of(context).settings;
+    _giveUp?.cancel();
+    _back.stop();
+    _dir = _swiped ?? widget.direction;
+    _swiped = null;
+    _out = old.song;
+    _outFrom = _drag;
+    _drag = 0;
+    _swap.duration = motion(s, widget.style == _DeckStyle.glance ? 320 : 450);
+    _swap.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _giveUp?.cancel();
+    _swap.dispose();
+    _back.dispose();
+    super.dispose();
+  }
+
+  void _springBack() {
+    final from = _drag;
+    _backTween = () => from * (1 - Curves.easeOutBack.transform(_back.value));
+    _back.duration = motion(AppScope.of(context).settings, 300);
+    _back.forward(from: 0);
+    if (_back.duration == Duration.zero) setState(() => _drag = 0);
+  }
+
+  void _end(DragEndDetails d) {
+    final p = AppScope.of(context).player;
+    final v = d.primaryVelocity ?? 0;
+    final far = _drag.abs() > widget.travel * 0.22 || (v.abs() > 700 && _drag.abs() > 24);
+    final dir = _drag < 0 ? 1 : -1; // swipe left = next
+    if (!far || (v != 0 && v.sign == dir.toDouble() && v.abs() > 300)) {
+      _springBack();
+      return;
+    }
+    _swiped = dir;
+    unawaited(dir == 1 ? p.next() : p.previous());
+    // No new song (end of the queue, or "previous" restarted this one).
+    _giveUp = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted || _swiped == null) return;
+      _swiped = null;
+      _springBack();
+    });
+  }
+
+  /// Places one picture: [x] is its offset as a share of the travel (0 =
+  /// centre, ±1 = gone off a side).
+  Widget _place(Widget child, double x) {
+    final w = widget.travel;
+    switch (widget.style) {
+      case _DeckStyle.record:
+        // Dips a little at the far point of the swap.
+        final dip = 1 - 0.07 * sin(x.abs().clamp(0.0, 1.0) * pi);
+        return Transform.translate(
+          offset: Offset(x * w, 0),
+          child: Transform.scale(scale: dip, child: child),
+        );
+      case _DeckStyle.cover:
+        final k = x.clamp(-1.0, 1.0);
+        return Opacity(
+          opacity: (1 - k.abs() * 0.9).clamp(0.0, 1.0),
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0012)
+              ..translateByDouble(k * w * 0.55, 0, 0, 1)
+              ..rotateY(-k * 0.55)
+              ..scaleByDouble(1 - k.abs() * 0.12, 1 - k.abs() * 0.12, 1, 1),
+            child: child,
+          ),
+        );
+      case _DeckStyle.glance:
+        final k = x.clamp(-1.0, 1.0);
+        return Opacity(
+          opacity: (1 - k.abs()).clamp(0.0, 1.0),
+          child: Transform.translate(offset: Offset(k * w * 0.35, 0), child: child),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.travel;
+    final drag = _drag / w;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      dragStartBehavior: DragStartBehavior.down,
+      onHorizontalDragStart: (d) {
+        _back.stop();
+        _giveUp?.cancel();
+        _swiped = null;
+      },
+      onHorizontalDragUpdate: (d) => setState(() => _drag += d.delta.dx),
+      onHorizontalDragEnd: _end,
+      onHorizontalDragCancel: _springBack,
+      child: AnimatedBuilder(
+        animation: _swap,
+        builder: (context, _) {
+          final out = _out;
+          final t = out == null ? 1.0 : Curves.easeInOutCubic.transform(_swap.value);
+          final from = _outFrom / w;
+          return Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              if (out != null)
+                IgnorePointer(
+                  child: _place(
+                    KeyedSubtree(key: ValueKey('out${out.id}'), child: widget.builder(out, false)),
+                    from + (-_dir - from) * t,
+                  ),
+                ),
+              _place(
+                KeyedSubtree(key: ValueKey(widget.song.id), child: widget.builder(widget.song, true)),
+                out == null ? drag : _dir * (1 - t),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -901,13 +1178,6 @@ class _VinylPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final r = size.width / 2;
-    canvas.drawCircle(
-      c.translate(0, r * 0.04),
-      r,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.4)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
-    );
     canvas.drawCircle(c, r, Paint()..color = const Color(0xFF111114));
     final groove = Paint()
       ..style = PaintingStyle.stroke
@@ -1047,7 +1317,7 @@ class _Breathe extends StatelessWidget {
 /// The blurred cover behind the player drifts slowly (while playing).
 class _Drift extends StatefulWidget {
   final Widget child;
-  const _Drift({super.key, required this.child});
+  const _Drift({required this.child});
 
   @override
   State<_Drift> createState() => _DriftState();
