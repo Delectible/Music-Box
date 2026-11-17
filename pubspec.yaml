@@ -31,6 +31,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  shaders:
+    - shaders/nebula.frag
   fonts:
     - family: Jost
       fonts:
