@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:roadie/core/library.dart';
 import 'package:roadie/core/metadata.dart';
 import 'package:roadie/core/updater.dart';
+import 'package:roadie/core/tag_fixer.dart';
 import 'package:roadie/core/models.dart';
 import 'package:roadie/core/player.dart';
 import 'package:roadie/core/settings.dart';
@@ -17,6 +18,16 @@ void main() {
     expect(realAlbum('Singles Going Steady (Deluxe)'), 'Singles Going Steady (Deluxe)');
     expect(guessFromPath('/storage/emulated/0/Music/Lumen Coast/Singles/Exit 42.mp3').album, '');
     expect(TagValues.fromMap({'album': 'Singles', 'title': 'x'}).album, '');
+  });
+
+  test('enough tags for the quick cover search (title, artist, album)', () {
+    expect(
+      TagFixer.hasEnough(const TagValues(title: 'Exit 42', artist: 'Lumen Coast', album: 'Night Drive')),
+      true,
+    );
+    expect(TagFixer.hasEnough(TagValues.fromMap({'title': 'x', 'artist': 'y', 'album': 'Singles'})), false);
+    expect(TagFixer.hasEnough(const TagValues(title: 'x', artist: 'Unknown artist', album: 'z')), false);
+    expect(TagFixer.hasEnough(const TagValues(title: 'x', artist: 'y')), false);
   });
 
   test('a GitHub release becomes an update (APK builds only)', () {

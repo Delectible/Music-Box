@@ -106,6 +106,15 @@ class TagFixer extends ChangeNotifier {
     );
   }
 
+  /// Tagged well enough that only a missing cover is worth fetching: the
+  /// file's own title, artist and album (not "Unknown", not a download
+  /// folder's "Singles").
+  static bool hasEnough(TagValues t) {
+    bool real(String v) =>
+        v.trim().isNotEmpty && !RegExp(r'^unknown\b', caseSensitive: false).hasMatch(v.trim());
+    return real(t.title) && real(t.artist) && real(t.album);
+  }
+
   /// How sure we are of [m] for a song [length] long, 0..100.
   static int confidence(MbMatch m, Duration length, {MbMatch? runnerUp}) {
     var c = m.score.toDouble();
@@ -201,16 +210,18 @@ class TagFixer extends ChangeNotifier {
         j.note = 'Already has a cover';
         return;
       }
-      if (!j.coversOnly && j.onlyIncomplete && inFile != null && !inFile.incomplete && hasCover) {
+      // Enough to call a song tagged: its own title, artist and album in the
+      // file (year and genre are nice to have, not worth a slow lookup).
+      final enough = inFile != null && hasEnough(inFile);
+      if (!j.coversOnly && j.onlyIncomplete && enough && hasCover) {
         j.state = FixState.unchanged;
         j.note = 'Already has its tags and cover';
         return;
       }
-      // Only the cover missing (or only covers asked for): the quick cover
-      // search, no MusicBrainz.
-      final t = j.before!;
-      final namesKnown = t.title.isNotEmpty && t.artist.isNotEmpty && t.album.isNotEmpty;
-      if (!hasCover && (j.coversOnly || (namesKnown && inFile != null && !inFile.incomplete))) {
+      // Just the cover missing (or only covers asked for): the quick cover
+      // search, no MusicBrainz. If it finds none, a full lookup can still
+      // find one (not for covers only).
+      if (!hasCover && (j.coversOnly || (j.onlyIncomplete && enough))) {
         if (await _quickCover(j, stopped)) return;
         if (j.coversOnly) {
           j.state = FixState.noMatch;

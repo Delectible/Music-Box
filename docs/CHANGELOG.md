@@ -270,6 +270,11 @@
    Settings > Find missing covers (and in album / artist menus) does just
    covers for the whole library, much quicker; a song with no album gets
    its song's album cover. (0.4.5)
+78. Fix tags decides per song: a song with its own title, artist and album
+   (year and genre optional) only gets the quick cover search, if it lacks
+   a cover (a full lookup only if that finds none); anything less gets the
+   full MusicBrainz lookup. An album / artist's "Fix tags" still does full
+   lookups for all. (0.4.5)
 
 ## Ideas
 
