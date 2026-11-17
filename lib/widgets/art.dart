@@ -27,6 +27,45 @@ Widget nowArtShuttle(
   return FittedBox(child: big.child);
 }
 
+/// The playing cover's path between the mini player and the full screen
+/// player. The player page slides up from the bottom; the cover settles onto
+/// its place on that moving page (rather than flying a separate arc), so
+/// cover and record arrive together. Closing is the same in reverse.
+Tween<Rect?> nowArtRectTween(Rect? begin, Rect? end) => _FollowPage(begin: begin, end: end);
+
+class _FollowPage extends Tween<Rect?> {
+  _FollowPage({super.begin, super.end});
+
+  /// A smooth "lower of the two" (no corner where the cover gets picked up).
+  static double _smin(double a, double b) {
+    const k = 30.0;
+    final m = min(a, b);
+    return m - k * log(exp((m - a) / k) + exp((m - b) / k));
+  }
+
+  @override
+  Rect? lerp(double t) {
+    final b = begin, e = end;
+    if (b == null || e == null) return Rect.lerp(b, e, t);
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final view = views.isEmpty ? null : views.first;
+    final h = view == null ? 800.0 : view.physicalSize.height / view.devicePixelRatio;
+    // The bigger one is in the player. Its place rides the page, which is
+    // off the bottom of the screen at the mini player's end.
+    final opening = e.width >= b.width;
+    final player = opening ? e : b;
+    final mini = opening ? b : e;
+    final p = opening ? t : 1 - t; // 0 = mini player, 1 = player
+    final onPage = player.center.translate(0, h * (1 - p));
+    // Sideways it eases over; up and down it waits at the mini player until
+    // the rising page reaches it, then rides the page (and the reverse).
+    final x = mini.center.dx + (player.center.dx - mini.center.dx) * Curves.easeOutCubic.transform(p);
+    final y = _smin(mini.center.dy, onPage.dy);
+    final size = Size.lerp(mini.size, player.size, p)!;
+    return Rect.fromCenter(center: Offset(x, y), width: size.width, height: size.height);
+  }
+}
+
 /// Decodes the playing song's cover ahead of time, at the sizes the player
 /// uses, so opening the player shows it on the first frame.
 Future<void> warmCover(BuildContext context, int albumId) async {

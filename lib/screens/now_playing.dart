@@ -443,25 +443,57 @@ class _Titles extends StatelessWidget {
           style: TextStyle(fontSize: size, fontWeight: FontWeight.w600, height: 1.1),
         ),
         SizedBox(height: size * 0.25),
-        Text(
-          song.artist,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: align,
-          style: TextStyle(fontSize: size * 0.6, color: cs.primary, fontWeight: FontWeight.w500),
+        // Tap the artist or the album to go to it.
+        _Link(
+          onTap: () {
+            final lib = AppScope.of(context).library;
+            final a =
+                lib.artist(song.artist) ??
+                lib.artist(song.artist.split(RegExp(r'\s*(?:;|,|&|/| feat\.? | ft\.? )\s*')).first) ??
+                lib.artist(song.albumArtist);
+            if (a != null) openCollection(context, a);
+          },
+          child: Text(
+            song.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: align,
+            style: TextStyle(fontSize: size * 0.6, color: cs.primary, fontWeight: FontWeight.w500),
+          ),
         ),
-        Text(
-          song.album,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: align,
-          style: TextStyle(fontSize: size * 0.5, color: cs.onSurfaceVariant),
+        _Link(
+          onTap: () {
+            final a = AppScope.of(context).library.album(song.albumId);
+            if (a != null) openCollection(context, a);
+          },
+          child: Text(
+            song.album,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: align,
+            style: TextStyle(fontSize: size * 0.5, color: cs.onSurfaceVariant),
+          ),
         ),
         SizedBox(height: size * 0.3),
         QualityBadge(song: song, size: (size * 0.42).clamp(12.0, 18.0)),
       ],
     );
   }
+}
+
+/// A line of text that opens something when tapped (with a soft press
+/// highlight and a bit of extra height to hit).
+class _Link extends StatelessWidget {
+  final VoidCallback onTap;
+  final Widget child;
+  const _Link({required this.onTap, required this.child});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(10),
+    child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4), child: child),
+  );
 }
 
 /// Previous, play, next (and shuffle / repeat either side).
@@ -574,7 +606,14 @@ class _CoverLayout extends StatelessWidget {
                   ),
                   child: Art(albumId: song.albumId, size: size),
                 );
-                return live ? Hero(tag: 'now-art', flightShuttleBuilder: nowArtShuttle, child: art) : art;
+                return live
+                    ? Hero(
+                        tag: 'now-art',
+                        flightShuttleBuilder: nowArtShuttle,
+                        createRectTween: nowArtRectTween,
+                        child: art,
+                      )
+                    : art;
               },
             ),
           ),
@@ -697,7 +736,12 @@ class _GlanceLayout extends StatelessWidget {
                     return Row(
                       children: [
                         if (live)
-                          Hero(tag: 'now-art', flightShuttleBuilder: nowArtShuttle, child: art)
+                          Hero(
+                            tag: 'now-art',
+                            flightShuttleBuilder: nowArtShuttle,
+                            createRectTween: nowArtRectTween,
+                            child: art,
+                          )
                         else
                           art,
                         SizedBox(width: wide ? 32 : 20),
@@ -911,7 +955,8 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
     final label = size * 0.42;
     final small = artRadius(AppScope.of(context).settings.artShape, label).topLeft.x;
     final start = _turns.value;
-    final rest = start == 0 ? 0.0 : 1 - start; // to the next upright
+    // To the nearest upright, whichever way is shorter.
+    final rest = start > 0.5 ? 1 - start : -start;
     return AnimatedBuilder(
       animation: Listenable.merge([a, _turns]),
       builder: (context, _) {
@@ -952,7 +997,15 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
               ),
             ),
           ),
-          if (live) Hero(tag: 'now-art', flightShuttleBuilder: _shuttle, child: label) else label,
+          if (live)
+            Hero(
+              tag: 'now-art',
+              flightShuttleBuilder: _shuttle,
+              createRectTween: nowArtRectTween,
+              child: label,
+            )
+          else
+            label,
         ],
       ),
     );

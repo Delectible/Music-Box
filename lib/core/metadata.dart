@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'crash_log.dart';
 import 'http.dart';
@@ -215,23 +216,30 @@ class MusicBrainz {
   /// and tries again: 2, 5, then 10 seconds.
   static Future<Object?> _get(String path, Map<String, String> query) async {
     final uri = Uri.parse('$_api/$path').replace(queryParameters: {...query, 'fmt': 'json'});
-    const backoff = [2, 5, 10];
+    // Busy (common on shared mobile connections): wait longer each time,
+    // and slow down for a while after.
+    const backoff = [3, 8, 20, 45];
     for (var attempt = 0; ; attempt++) {
-      final wait = _last.add(const Duration(milliseconds: 1200)).difference(DateTime.now());
+      final wait = _last.add(Duration(milliseconds: _gap)).difference(DateTime.now());
       if (!wait.isNegative) await Future<void>.delayed(wait);
       _last = DateTime.now();
       try {
-        return await Http.json(uri);
+        final r = await Http.json(uri);
+        _gap = max(1100, _gap - 50);
+        return r;
       } on HttpFailure catch (e) {
         final busy = e.status == 503 || e.status == 429 || e.status == 502;
         if (!busy || attempt >= backoff.length) {
           if (busy) throw HttpFailure('MusicBrainz is busy right now. Try again in a minute.', e.status);
           rethrow;
         }
+        _gap = min(3000, _gap + 500);
         _last = DateTime.now().add(Duration(seconds: backoff[attempt]));
       }
     }
   }
+
+  static int _gap = 1100; // ms between requests (MusicBrainz asks for 1 a second)
 
   static String _q(String s) => s.replaceAll(RegExp(r'[\\+\-!(){}\[\]^"~*?:/]|&&|\|\|'), ' ').trim();
 
@@ -270,7 +278,7 @@ class MusicBrainz {
       'recording:"$t"',
     }.toList();
     var recs = const <Object?>[];
-    for (final q in attempts.take(5)) {
+    for (final q in attempts.take(4)) {
       final data = await _get('recording', {'query': q, 'limit': '15'});
       recs = (data as Map?)?['recordings'] as List? ?? const [];
       if (recs.isNotEmpty) break;
@@ -387,8 +395,15 @@ class MusicBrainz {
     var list = best();
     // Live takes only when nothing else fits.
     if (!liveWanted && list.any((m) => !m.live)) list = list.where((m) => !m.live).toList();
-    // A match without a cover shouldn't win: look up covers for the leaders.
-    await Future.wait(list.take(10).map(findCover));
+    // A match without a cover shouldn't win: look up covers for the few
+    // that a cover could still put first (all at once, a few seconds at most).
+    final top = list.isEmpty ? 0 : rank(list.first);
+    await Future.wait(
+      list
+          .take(4)
+          .where((m) => top - rank(m) < 150)
+          .map((m) => findCover(m).timeout(const Duration(seconds: 8), onTimeout: () {})),
+    );
     out
       ..clear()
       ..addAll(list);

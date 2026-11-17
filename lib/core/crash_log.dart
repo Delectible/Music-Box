@@ -66,7 +66,7 @@ class CrashLog {
     }
   }
 
-  /// Everything recorded, newest last (native crashes included).
+  /// Everything recorded, newest first (native crashes included).
   static Future<String> read() async {
     final native = await Native.nativeCrashes();
     String dart = '';
@@ -76,7 +76,14 @@ class CrashLog {
     } on Object {
       dart = '';
     }
-    return [if (native.isNotEmpty) '--- Native ---\n$native', if (dart.isNotEmpty) dart].join('\n');
+    // Entries start with "=== <time>": newest at the top.
+    final entries = dart
+        .split(RegExp(r'^(?==== )', multiLine: true))
+        .where((e) => e.trim().isNotEmpty)
+        .toList()
+        .reversed
+        .join();
+    return [if (entries.isNotEmpty) entries, if (native.isNotEmpty) '--- Native ---\n$native'].join('\n');
   }
 
   static Future<void> clear() async {

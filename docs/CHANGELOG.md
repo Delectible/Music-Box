@@ -239,6 +239,19 @@
    signing key) before Android's installer opens, and removed once
    installed. The Play build doesn't include it. (0.4.4)
 
+71. Fix tags was slow and gave up when MusicBrainz was busy. Covers are
+   looked up only for the few matches a cover could still put first (8 s at
+   most), one tag read per file instead of three, writing a file overlaps
+   the next song's lookup, fewer search retries; when MusicBrainz is busy
+   it waits longer (up to 45 s) and slows down for a while instead of
+   failing. (0.4.5)
+72. Problem reports: newest first. (0.4.5)
+73. Player open / close: the cover waits at the mini player until the
+   rising page reaches it, then rides the page, so it moves with the record
+   (it used to fly its own arc at its own speed). Closing, the label turns
+   to the nearest upright, either way (not always clockwise). (0.4.5)
+74. Tap the artist or album in the full screen player to go to it. (0.4.5)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

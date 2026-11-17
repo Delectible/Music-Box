@@ -67,19 +67,22 @@ class TagFixer extends ChangeNotifier {
     total = songs.length;
     notifyListeners();
     final changed = <String>[];
+    Future<void> writing = Future.value();
     for (final s in songs) {
       if (_cancel) break;
       current = '${s.artist} – ${s.title}';
       notifyListeners();
       try {
-        final now = await currentTags(s);
-        TagValues? inFile;
+        // One read of the file's tags (it was three).
+        Map<String, Object?>? raw;
         try {
-          inFile = TagValues.fromMap(await Native.readTags(s.path));
+          raw = await Native.readTags(s.path);
         } on PlatformException {
-          inFile = null;
+          raw = null;
         }
-        final complete = inFile != null && !inFile.incomplete && (await _hasCover(s.path));
+        final inFile = raw == null ? null : TagValues.fromMap(raw);
+        final now = (inFile ?? TagValues.ofSong(s)).fill(TagValues.ofSong(s)).fill(guessFromPath(s.path));
+        final complete = inFile != null && !inFile.incomplete && raw!['hasCover'] == true;
         if (onlyIncomplete && complete) {
           skipped++;
         } else {
@@ -87,9 +90,18 @@ class TagFixer extends ChangeNotifier {
           if (m == null) {
             skipped++;
           } else {
-            await apply(s.path, inFile ?? now, m, keepExisting: true);
-            changed.add(s.path);
-            fixed++;
+            // Writing (cover download, tags) overlaps the next song's lookup.
+            await writing;
+            writing = apply(s.path, inFile ?? now, m, keepExisting: true).then(
+              (_) {
+                changed.add(s.path);
+                fixed++;
+              },
+              onError: (Object e, StackTrace st) {
+                failed++;
+                CrashLog.record(e, st, where: 'fix tags: ${s.path}');
+              },
+            );
           }
         }
       } on Object catch (e, st) {
@@ -99,18 +111,11 @@ class TagFixer extends ChangeNotifier {
       done++;
       notifyListeners();
     }
+    await writing;
     current = '';
     running = false;
     notifyListeners();
     if (changed.isNotEmpty) await rescan(library, changed);
-  }
-
-  static Future<bool> _hasCover(String path) async {
-    try {
-      return (await Native.readTags(path))['hasCover'] == true;
-    } on PlatformException {
-      return false;
-    }
   }
 
   void cancel() => _cancel = true;

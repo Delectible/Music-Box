@@ -56,6 +56,7 @@ class MiniPlayer extends StatelessWidget {
                                   Hero(
                                     tag: 'now-art',
                                     flightShuttleBuilder: nowArtShuttle,
+                                    createRectTween: nowArtRectTween,
                                     child: Art(albumId: song.albumId, size: 52),
                                   ),
                                   const SizedBox(width: 14),
