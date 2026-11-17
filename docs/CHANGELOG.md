@@ -251,6 +251,9 @@
    (it used to fly its own arc at its own speed). Closing, the label turns
    to the nearest upright, either way (not always clockwise). (0.4.5)
 74. Tap the artist or album in the full screen player to go to it. (0.4.5)
+75. Fix: a small blurred square drifted behind the record (seen when it
+   was swiped aside): the blurred backdrop wasn't stretched to the screen
+   since 0.4.4. (0.4.5)
 
 ## Ideas
 

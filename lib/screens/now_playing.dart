@@ -181,6 +181,10 @@ class _Backdrop extends StatelessWidget {
             future: scope.library.source.art(song.albumId, 160),
             builder: (context, snap) => AnimatedSwitcher(
               duration: motion(scope.settings, 600),
+              // Full screen: the default layout let the small blurred picture
+              // shrink to its own size (a square drifting behind the record).
+              layoutBuilder: (current, previous) =>
+                  Stack(fit: StackFit.expand, children: [...previous, ?current]),
               child: snap.data == null
                   ? _Glow(key: ValueKey('g${song.albumId}'), color: albumHue(song.albumId))
                   : FutureBuilder<ui.Image?>(
@@ -190,6 +194,8 @@ class _Backdrop extends StatelessWidget {
                           ? _Glow(color: albumHue(song.albumId))
                           : _Drift(
                               child: RawImage(
+                                width: double.infinity,
+                                height: double.infinity,
                                 image: img.data,
                                 fit: BoxFit.cover,
                                 filterQuality: FilterQuality.medium,
