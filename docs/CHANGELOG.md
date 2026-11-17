@@ -255,6 +255,15 @@
    was swiped aside): the blurred backdrop wasn't stretched to the screen
    since 0.4.4. (0.4.5)
 
+76. Fix tags as its own screen, like Downloads: every song with its cover
+   (the match's), what it becomes, and how sure (%). Unsure ones wait under
+   Needs you at the top (Pick shows the matches found, with search and
+   Leave as it is), then Didn't work (try again), Working, Not found, Done.
+   It keeps going when closed; a button in the top bar shows progress and
+   how many need you. 3 songs at once (MusicBrainz lookups still take
+   turns, about one a second; covers and writes overlap). Stop now stops at
+   once, even mid-lookup or while waiting out a busy MusicBrainz. (0.4.5)
+
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.

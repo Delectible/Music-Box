@@ -18,6 +18,10 @@ import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/core/updater.dart';
+import 'package:roadie/core/tag_fixer.dart';
+import 'package:roadie/core/metadata.dart';
+import 'package:roadie/core/models.dart';
+import 'package:roadie/screens/fix_tags_sheet.dart';
 import 'package:roadie/core/lyrics.dart';
 import 'package:roadie/core/quality.dart';
 import 'package:roadie/screens/file_actions.dart';
@@ -319,6 +323,60 @@ void main() {
       await shot(tester, 'phone_close_${ms}ms');
     }
     await _settle(tester);
+    a.engine.close();
+  });
+
+  testWidgets('fix tags: needs you, didn\'t work, working, done', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final f = AppScope.of(tester.element(find.byType(Scaffold).first)).fixer;
+    MbMatch match(Song s, String album, int score) => MbMatch(
+      recordingId: 'r${s.id}',
+      releaseId: 'x${s.id}',
+      artistId: '',
+      title: s.title,
+      artist: s.artist,
+      album: album,
+      albumArtist: s.artist,
+      date: '2019-05-01',
+      genre: '',
+      track: 1,
+      trackTotal: 10,
+      disc: 1,
+      score: score,
+      length: s.duration,
+      releaseType: 'Album',
+      country: '',
+    );
+    final songs = a.library.songs.take(9).toList();
+    FixJob job(int i, FixState st, {int sure = 0, String? note, String album = 'Night Drive'}) {
+      final j = FixJob(songs[i], onlyIncomplete: true)
+        ..state = st
+        ..confidence = sure
+        ..note = note;
+      if (sure > 0) j.matches = [match(songs[i], album, sure)];
+      return j;
+    }
+
+    f.jobs.addAll([
+      job(0, FixState.review, sure: 62, album: 'Live at the Pier'),
+      job(1, FixState.review, sure: 74),
+      job(2, FixState.failed, note: 'MusicBrainz is busy right now. Try again in a minute. (HTTP 503)'),
+      job(3, FixState.looking),
+      job(4, FixState.queued),
+      job(5, FixState.noMatch, note: 'Not found on MusicBrainz'),
+      job(6, FixState.fixed, sure: 97),
+      job(7, FixState.unchanged, note: 'Already has its tags and cover'),
+    ]);
+    // Opened from the top bar's button.
+    openFixQueue(tester.element(find.byType(Scaffold).first));
+    await _settle(tester);
+    expect(find.text('Needs you (2)'), findsOneWidget);
+    expect(find.text('62%'), findsOneWidget);
+    await shot(tester, 'car_fix_tags');
+    f.jobs.clear();
     a.engine.close();
   });
 

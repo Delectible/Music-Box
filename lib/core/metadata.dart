@@ -148,6 +148,12 @@ TagValues guessFromPath(String path) {
   return TagValues(title: title, artist: artist, album: album, track: track);
 }
 
+/// A lookup stopped by the user.
+class LookupCancelled implements Exception {
+  @override
+  String toString() => 'Stopped';
+}
+
 /// One candidate from MusicBrainz.
 class MbMatch {
   final String recordingId, releaseId, artistId;
@@ -211,18 +217,16 @@ class MusicBrainz {
   static const _api = 'https://musicbrainz.org/ws/2';
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// One request at a time, a little over a second apart; when MusicBrainz
-  /// says it's busy (503 / 429, common on shared mobile connections), waits
-  /// and tries again: 2, 5, then 10 seconds.
-  static Future<Object?> _get(String path, Map<String, String> query) async {
+  /// One request at a time, a little over a second apart, however many
+  /// lookups run at once (they queue for their turn); when MusicBrainz says
+  /// it's busy (503 / 429, common on shared mobile connections), waits
+  /// longer each time and slows down for a while. [cancelled] stops a
+  /// lookup while it waits (throws [LookupCancelled]).
+  static Future<Object?> _get(String path, Map<String, String> query, {bool Function()? cancelled}) async {
     final uri = Uri.parse('$_api/$path').replace(queryParameters: {...query, 'fmt': 'json'});
-    // Busy (common on shared mobile connections): wait longer each time,
-    // and slow down for a while after.
     const backoff = [3, 8, 20, 45];
     for (var attempt = 0; ; attempt++) {
-      final wait = _last.add(Duration(milliseconds: _gap)).difference(DateTime.now());
-      if (!wait.isNegative) await Future<void>.delayed(wait);
-      _last = DateTime.now();
+      await _turn(cancelled);
       try {
         final r = await Http.json(uri);
         _gap = max(1100, _gap - 50);
@@ -234,8 +238,33 @@ class MusicBrainz {
           rethrow;
         }
         _gap = min(3000, _gap + 500);
-        _last = DateTime.now().add(Duration(seconds: backoff[attempt]));
+        final until = DateTime.now().add(Duration(seconds: backoff[attempt]));
+        if (until.isAfter(_last)) _last = until;
       }
+    }
+  }
+
+  static Future<void> _queue = Future.value();
+
+  /// Waits for this request's slot: [_gap] after the last one started.
+  static Future<void> _turn(bool Function()? cancelled) async {
+    final before = _queue;
+    final mine = Completer<void>();
+    _queue = mine.future;
+    try {
+      await before;
+      while (true) {
+        if (cancelled?.call() ?? false) throw LookupCancelled();
+        final wait = _last.add(Duration(milliseconds: _gap)).difference(DateTime.now());
+        if (wait <= Duration.zero) break;
+        // In small steps, so Stop is quick.
+        await Future<void>.delayed(
+          wait < const Duration(milliseconds: 300) ? wait : const Duration(milliseconds: 300),
+        );
+      }
+      _last = DateTime.now();
+    } finally {
+      mine.complete();
     }
   }
 
@@ -254,6 +283,7 @@ class MusicBrainz {
     String artist = '',
     String album = '',
     Duration? length,
+    bool Function()? cancelled,
   }) async {
     final t = _q(title);
     if (t.isEmpty) return const [];
@@ -279,7 +309,7 @@ class MusicBrainz {
     }.toList();
     var recs = const <Object?>[];
     for (final q in attempts.take(4)) {
-      final data = await _get('recording', {'query': q, 'limit': '15'});
+      final data = await _get('recording', {'query': q, 'limit': '15'}, cancelled: cancelled);
       recs = (data as Map?)?['recordings'] as List? ?? const [];
       if (recs.isNotEmpty) break;
     }

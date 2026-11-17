@@ -10,16 +10,23 @@ import '../core/scope.dart';
 import '../core/tag_fixer.dart';
 import '../widgets/art.dart';
 
-/// Look a song up on MusicBrainz and pick the right match.
-Future<void> showFixTags(BuildContext context, Song song) => showModalBottomSheet<void>(
+/// Look a song up on MusicBrainz and pick the right match. With [job]
+/// (an unsure song from Fix tags) it starts with the matches already found
+/// and the pick goes back to that job.
+Future<void> showFixTags(BuildContext context, Song song, {FixJob? job}) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
   constraints: const BoxConstraints(maxWidth: 760),
-  builder: (_) => FractionallySizedBox(heightFactor: 0.9, child: _FixTags(song: song)),
+  builder: (_) => FractionallySizedBox(
+    heightFactor: 0.9,
+    child: _FixTags(song: song, job: job),
+  ),
 );
 
-/// Fix the tags of many songs: only clear matches are used.
+/// Fix the tags of many songs: queued, clear matches written, unsure ones
+/// left for you to pick. Opens the Fix tags screen (it keeps going when
+/// closed).
 Future<void> fixTagsFor(BuildContext context, List<Song> songs, {bool onlyIncomplete = true}) async {
   final scope = AppScope.of(context);
   if (!await TagFixer.ensureWrite()) {
@@ -30,53 +37,351 @@ Future<void> fixTagsFor(BuildContext context, List<Song> songs, {bool onlyIncomp
     }
     return;
   }
-  unawaited(scope.fixer.fixAll(songs, onlyIncomplete: onlyIncomplete));
-  if (context.mounted) await showFixProgress(context);
+  scope.fixer.addAll(songs, onlyIncomplete: onlyIncomplete);
+  if (context.mounted) openFixQueue(context);
 }
 
-Future<void> showFixProgress(BuildContext context) => showDialog<void>(
-  context: context,
-  builder: (context) {
+void openFixQueue(BuildContext context) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FixQueueScreen()));
+
+/// The top bar's way back to Fix tags while it works or needs you.
+class FixTagsButton extends StatelessWidget {
+  const FixTagsButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     final f = AppScope.of(context).fixer;
     return ListenableBuilder(
       listenable: f,
-      builder: (context, _) => AlertDialog(
-        title: Text(f.running ? 'Fixing tags…' : 'Tags fixed'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (context, _) {
+        final need = f.needsYou;
+        if (!f.running && need == 0) return const SizedBox.shrink();
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            if (f.running)
+              SizedBox.square(
+                dimension: 44,
+                child: CircularProgressIndicator(
+                  value: f.jobs.isEmpty ? null : f.finished / f.jobs.length,
+                  strokeWidth: 3,
+                ),
+              ),
+            IconButton(
+              iconSize: 28,
+              padding: const EdgeInsets.all(12),
+              tooltip: 'Fix tags',
+              onPressed: () => openFixQueue(context),
+              icon: Badge(
+                isLabelVisible: need > 0,
+                label: Text('$need'),
+                child: const Icon(Icons.auto_fix_high_rounded),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Every song in the current Fix tags run, grouped like downloads: the
+/// ones that need you on top, then what didn't work, what's going, what
+/// wasn't found, and what's done.
+class FixQueueScreen extends StatelessWidget {
+  const FixQueueScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final f = AppScope.of(context).fixer;
+    return ListenableBuilder(
+      listenable: f,
+      builder: (context, _) {
+        final review = f.jobs.where((j) => j.state == FixState.review).toList();
+        final failed = f.jobs.where((j) => j.state == FixState.failed).toList();
+        final working = [
+          ...f.jobs.where((j) => j.state == FixState.looking || j.state == FixState.writing),
+          ...f.jobs.where((j) => j.state == FixState.queued),
+        ];
+        final missing = f.jobs.where((j) => j.state == FixState.noMatch).toList();
+        final done = f.jobs.reversed
+            .where((j) => j.state == FixState.fixed || j.state == FixState.unchanged)
+            .toList();
+        // One flat list, built as it scrolls (a whole library can be in it).
+        final rows = <Widget Function()>[
+          () => _Summary(fixer: f),
+          if (review.isNotEmpty) ...[
+            () => _Group(
+              'Needs you',
+              review.length,
+              icon: Icons.priority_high_rounded,
+              action: TextButton(
+                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: f.leaveAllUnsure,
+                child: const Text('Leave all as they are'),
+              ),
+            ),
+            for (final j in review) () => _FixTile(job: j),
+          ],
+          if (failed.isNotEmpty) ...[
+            () => _Group(
+              'Didn\'t work',
+              failed.length,
+              icon: Icons.error_outline_rounded,
+              action: TextButton.icon(
+                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: f.retryFailed,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try all again'),
+              ),
+            ),
+            for (final j in failed) () => _FixTile(job: j),
+          ],
+          if (working.isNotEmpty) ...[
+            () => _Group('Working', working.length, icon: Icons.auto_fix_high_rounded),
+            for (final j in working) () => _FixTile(job: j),
+          ],
+          if (missing.isNotEmpty) ...[
+            () => _Group('Not found', missing.length, icon: Icons.search_off_rounded),
+            for (final j in missing) () => _FixTile(job: j),
+          ],
+          if (done.isNotEmpty) ...[
+            () => _Group(
+              'Done',
+              done.length,
+              icon: Icons.check_circle_outline_rounded,
+              action: TextButton(
+                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: f.clearDone,
+                child: const Text('Clear'),
+              ),
+            ),
+            for (final j in done) () => _FixTile(job: j),
+          ],
+        ];
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Fix tags'),
+            toolbarHeight: 64,
+            actions: [
+              if (f.running)
+                TextButton.icon(
+                  style: TextButton.styleFrom(minimumSize: const Size(0, 52)),
+                  onPressed: f.cancel,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: const Text('Stop'),
+                ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: f.jobs.isEmpty
+              ? const Center(child: Text('Nothing to fix. Start from Settings, or an album / artist menu.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 40),
+                  itemCount: rows.length,
+                  itemBuilder: (_, i) => rows[i](),
+                ),
+        );
+      },
+    );
+  }
+}
+
+class _Summary extends StatelessWidget {
+  final TagFixer fixer;
+  const _Summary({required this.fixer});
+
+  @override
+  Widget build(BuildContext context) {
+    final f = fixer;
+    final cs = Theme.of(context).colorScheme;
+    final total = f.jobs.length;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (f.running) ...[
-              LinearProgressIndicator(value: f.total == 0 ? null : f.done / f.total),
-              const SizedBox(height: 12),
-              Text(f.current, maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 8),
-            ],
             Text(
-              '${f.done} of ${f.total} checked · ${f.fixed} fixed · ${f.skipped} left as they were'
-              '${f.failed > 0 ? ' · ${f.failed} failed (see Problem reports)' : ''}',
+              f.running
+                  ? 'Checking ${f.finished} of $total'
+                  : 'Checked $total ${total == 1 ? 'song' : 'songs'}',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            if (!f.running && f.skipped > 0)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : f.finished / total,
+                minHeight: 10,
+                backgroundColor: cs.surfaceContainerHighest,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              [
+                '${f.count(FixState.fixed)} fixed',
+                if (f.needsYou > 0) '${f.needsYou} need you',
+                if (f.count(FixState.unchanged) > 0) '${f.count(FixState.unchanged)} left as they were',
+                if (f.count(FixState.noMatch) > 0) '${f.count(FixState.noMatch)} not found',
+                if (f.count(FixState.failed) > 0) '${f.count(FixState.failed)} didn\'t work',
+              ].join(' · '),
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            if (f.running)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Songs without a clear match are left alone; fix those one at a time from the song menu.',
+                  'Keeps going if you leave this screen. MusicBrainz takes about one lookup a second.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
                 ),
               ),
           ],
         ),
-        actions: [
-          if (f.running) TextButton(onPressed: f.cancel, child: const Text('Stop')),
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(f.running ? 'Hide' : 'Done')),
+      ),
+    );
+  }
+}
+
+class _Group extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final Widget? action;
+  const _Group(this.title, this.count, {required this.icon, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 12, 4),
+      child: Row(
+        children: [
+          Icon(icon, color: cs.primary, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$title ($count)',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.primary),
+            ),
+          ),
+          ?action,
         ],
       ),
     );
-  },
-);
+  }
+}
+
+/// One song: its cover (the match's when there is one), what it is, what
+/// it becomes, and how sure.
+class _FixTile extends StatelessWidget {
+  final FixJob job;
+  const _FixTile({required this.job});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final f = AppScope.of(context).fixer;
+    final j = job;
+    final m = j.best;
+    final showMatch =
+        m != null && (j.state == FixState.review || j.state == FixState.fixed || j.state == FixState.writing);
+    final cover = showMatch && m.coverThumb.isNotEmpty
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              m.coverThumb,
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Art(albumId: j.song.albumId, size: 56, radius: 8),
+            ),
+          )
+        : Art(albumId: j.song.albumId, size: 56, radius: 8);
+    final status = switch (j.state) {
+      FixState.queued => 'Waiting',
+      FixState.looking => 'Looking it up…',
+      FixState.writing => 'Writing tags and cover…',
+      FixState.review => 'Not sure: pick the right one',
+      FixState.fixed => null,
+      FixState.unchanged || FixState.noMatch || FixState.failed => j.note,
+    };
+    final into = showMatch
+        ? 'Album: ${m.album}${m.year.isNotEmpty ? ' (${m.year})' : ''}${m.coverUrl.isEmpty ? ' · no cover' : ''}'
+        : null;
+    return ListTile(
+      minTileHeight: 76,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          cover,
+          if (j.state == FixState.looking || j.state == FixState.writing)
+            const Positioned.fill(child: Center(child: CircularProgressIndicator(strokeWidth: 3))),
+        ],
+      ),
+      title: Text('${j.song.title} · ${j.song.artist}', maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        [?into, ?status].join('\n'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: j.state == FixState.failed ? cs.error : null),
+      ),
+      onTap: j.state == FixState.review || j.state == FixState.noMatch || j.state == FixState.fixed
+          ? () => showFixTags(context, j.song, job: j)
+          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showMatch && j.confidence > 0) _Sure(value: j.confidence),
+          if (j.state == FixState.review) ...[
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+              onPressed: () => showFixTags(context, j.song, job: j),
+              child: const Text('Pick'),
+            ),
+          ],
+          if (j.state == FixState.failed || j.state == FixState.noMatch)
+            IconButton(
+              tooltip: 'Try again',
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: () => f.retry(j),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "92%": green when sure, amber when not.
+class _Sure extends StatelessWidget {
+  final int value;
+  const _Sure({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final sure = value >= TagFixer.sureEnough;
+    final c = sure ? cs.primary : cs.tertiary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.withValues(alpha: 0.6)),
+      ),
+      child: Text(
+        '$value%',
+        style: TextStyle(color: c, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
 
 class _FixTags extends StatefulWidget {
   final Song song;
-  const _FixTags({required this.song});
+  final FixJob? job;
+  const _FixTags({required this.song, this.job});
 
   @override
   State<_FixTags> createState() => _FixTagsState();
@@ -105,6 +410,12 @@ class _FixTagsState extends State<_FixTags> {
     _title.text = t.title;
     _artist.text = t.artist;
     _album.text = t.album;
+    // From Fix tags: the matches it already found.
+    final found = widget.job?.matches ?? const [];
+    if (found.isNotEmpty) {
+      setState(() => _results = found);
+      return;
+    }
     await _search();
   }
 
@@ -128,6 +439,7 @@ class _FixTagsState extends State<_FixTags> {
 
   Future<void> _apply(MbMatch m) async {
     final lib = AppScope.of(context).library;
+    final fixer = AppScope.of(context).fixer;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     if (!await TagFixer.ensureWrite()) {
@@ -135,6 +447,12 @@ class _FixTagsState extends State<_FixTags> {
       return;
     }
     setState(() => _applying = m.releaseId);
+    final job = widget.job;
+    if (job != null) {
+      nav.pop();
+      await fixer.choose(job, m);
+      return;
+    }
     try {
       await TagFixer.apply(widget.song.path, _current ?? const TagValues(), m);
       nav.pop();
@@ -178,6 +496,16 @@ class _FixTagsState extends State<_FixTags> {
             leading: Art(albumId: song.albumId, size: 52),
             title: Text('Fix tags', style: tt.titleLarge),
             subtitle: Text(song.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: widget.job == null || widget.job!.state != FixState.review
+                ? null
+                : TextButton(
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: () {
+                      AppScope.of(context).fixer.leave(widget.job!);
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Leave as it is'),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),

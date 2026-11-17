@@ -6,5 +6,5 @@ class AppInfo {
 
   /// Play's "What's new" for this build: one plain-words line.
   static const latest =
-      'Faster tag fixing, newest problem reports first, the cover moves with the record, tap artist or album to open it.';
+      'Fix tags screen: see every song, its cover and how sure; pick the unsure ones. Faster, and Stop works.';
 }
