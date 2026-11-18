@@ -6,6 +6,11 @@ Flutter 3.47.9 (pinned in the build workflow; move both together). `flutter crea
 --platforms android .` fills in the platform boilerplate we don't keep,
 then `flutter pub get`.
 
+No iOS build yet (Android only). If one is added: from April 2027 App
+Store Connect only takes apps built with the iOS 27 SDK (Xcode 27 or
+later); pin that Xcode explicitly in CI rather than relying on the
+runner's default.
+
 ## Structure
 
 - `lib/core/source.dart`: where songs come from. `MediaStoreSource` talks
