@@ -18,6 +18,7 @@ import 'package:roadie/core/sorting.dart';
 import 'package:roadie/core/source.dart';
 import 'package:roadie/core/visualizer.dart';
 import 'package:roadie/widgets/visualizer_painter.dart' show VizShaders;
+import 'package:roadie/core/phone.dart';
 import 'package:roadie/core/updater.dart';
 import 'package:roadie/core/tag_fixer.dart';
 import 'package:roadie/core/metadata.dart';
@@ -460,6 +461,46 @@ void main() {
     await _settle(tester);
     await shot(tester, 'phone_update_downloading');
     u.debugSet(stage: UpdateStage.idle);
+    a.engine.close();
+  });
+
+  testWidgets('phone over Bluetooth: playing, and the ways to connect', (tester) async {
+    setScreen(tester, car);
+    final a = await _app({});
+    await tester.pumpWidget(a.widget);
+    await _settle(tester);
+    final link = PhoneLink.instance;
+    final t = PhoneTrack(
+      key: 'com.example.btmusic',
+      app: 'com.example.btmusic',
+      label: 'BT Music',
+      via: PhoneVia.session,
+      title: 'Night Drive',
+      artist: 'The Long Roads',
+      album: 'Mile Markers',
+      duration: const Duration(minutes: 4, seconds: 12),
+      position: const Duration(minutes: 1, seconds: 30),
+      at: DateTime.now(),
+      playing: false,
+      actions: 0,
+      art: null,
+    );
+    link.debugSet(sessions: [t]);
+    await _settle(tester);
+    expect(find.byTooltip('Phone (Bluetooth)'), findsOneWidget);
+    await tester.tap(find.byTooltip('Phone (Bluetooth)'));
+    await _settle(tester);
+    expect(find.text('Night Drive'), findsOneWidget);
+    await shot(tester, 'car_phone_playing');
+    setScreen(tester, phone);
+    await _settle(tester);
+    await shot(tester, 'phone_phone_playing');
+    link.debugSet(access: false);
+    setScreen(tester, car);
+    await _settle(tester);
+    expect(find.text('Media sessions'), findsOneWidget);
+    await shot(tester, 'car_phone_setup');
+    link.debugSet(access: false, supported: false);
     a.engine.close();
   });
 

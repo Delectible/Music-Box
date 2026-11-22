@@ -300,12 +300,29 @@
      (a slim bar along the bottom); the song's title for a moment when it
      changes (with the controls, to skip it); change style every song or on
      a timer. (0.5.0)
+81. Phone over Bluetooth: a Bluetooth button in the top bar opens the
+    phone's now playing (whatever app: music, audiobooks, podcasts) with
+    cover, titles, progress, seeking and controls, laid out like Roadie's
+    player. Android doesn't let an app receive the phone's audio itself, so
+    the head unit's Bluetooth app keeps playing it; Roadie shows and
+    controls it. Five ways in, tried best first: media sessions
+    (notification access), a direct link to the Bluetooth app's player,
+    track broadcasts, media keys, and opening the head unit's own app; plus
+    what Bluetooth itself reports. Covers missing from the stream are
+    looked up online. Playing the phone pauses Roadie. (0.5.1)
+82. Fixes: the full screen player could open twice (a second copy under
+    the first; the first tap seemed to refresh it). Swiping the record
+    keeps moving the moment the finger lifts instead of waiting for the
+    next song, and only moves the pictures while dragging (less lag). The
+    mini player's cover no longer slides about between screens while the
+    bar snaps into place: it only flies to and from the full player. (0.5.1)
 
 ## Ideas
 
 - Android Auto / media browser tree so the car's own media UI can browse.
 - Alphabet scroller down the side of long lists.
 - Sleep / arrival timer; start / stop with the car's Bluetooth.
+- Phone source: if a method works, a mini player bar for the phone too.
 - Volume that rises with speed; voice commands.
 - Equaliser (per output: car, headphones).
 - AcoustID: identify songs with no usable tags by their sound.

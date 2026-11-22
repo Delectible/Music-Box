@@ -11,6 +11,7 @@ import 'get_music_screen.dart';
 import 'library_view.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
+import 'phone_screen.dart';
 import 'update_screen.dart';
 import 'visualizer_screen.dart';
 
@@ -241,6 +242,8 @@ class _Header extends StatelessWidget {
           ),
           // Only for the APK from GitHub, when a newer build is out.
           const UpdateButton(),
+          // The phone over the head unit's Bluetooth.
+          const PhoneButton(),
           // Fix tags while it works or needs you.
           const FixTagsButton(),
           if (tab != LibraryTab.get)

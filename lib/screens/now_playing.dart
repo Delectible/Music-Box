@@ -626,7 +626,7 @@ class _CoverLayout extends StatelessWidget {
                 );
                 return live
                     ? Hero(
-                        tag: 'now-art',
+                        tag: NowArtTag.player,
                         flightShuttleBuilder: nowArtShuttle,
                         createRectTween: nowArtRectTween,
                         child: art,
@@ -768,7 +768,7 @@ class _GlanceLayout extends StatelessWidget {
                         children: [
                           if (live)
                             Hero(
-                              tag: 'now-art',
+                              tag: NowArtTag.player,
                               flightShuttleBuilder: nowArtShuttle,
                               createRectTween: nowArtRectTween,
                               child: art,
@@ -1044,7 +1044,7 @@ class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
           ),
           if (live)
             Hero(
-              tag: 'now-art',
+              tag: NowArtTag.player,
               flightShuttleBuilder: _shuttle,
               createRectTween: nowArtRectTween,
               child: label,
@@ -1127,15 +1127,17 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
   Song? _out;
   int _dir = 1;
   double _outFrom = 0; // where the old one was when the skip began (px)
-  double _drag = 0;
+  bool _flung = false; // the old one was already moving off when the song changed
+  // The finger's offset (px). A notifier, so a drag only moves the
+  // pictures (no rebuild of the record each frame: that lagged on head units).
+  final _drag = ValueNotifier(0.0);
   int? _swiped; // the direction of a swipe waiting for the song to change
   Timer? _giveUp;
   late final _swap = AnimationController(vsync: this)
     ..addStatusListener((st) {
       if (st == AnimationStatus.completed) setState(() => _out = null);
     });
-  late final _back = AnimationController(vsync: this)
-    ..addListener(() => setState(() => _drag = _backTween()));
+  late final _back = AnimationController(vsync: this)..addListener(() => _drag.value = _backTween());
   double Function() _backTween = () => 0;
 
   @override
@@ -1145,12 +1147,16 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
     final s = AppScope.of(context).settings;
     _giveUp?.cancel();
     _back.stop();
+    _flung = _swiped != null;
     _dir = _swiped ?? widget.direction;
     _swiped = null;
     _out = old.song;
-    _outFrom = _drag;
-    _drag = 0;
-    _swap.duration = motion(s, widget.style == _DeckStyle.glance ? 320 : 450);
+    _outFrom = _drag.value;
+    _drag.value = 0;
+    // After a swipe the old one is already on its way: the rest is shorter.
+    final full = widget.style == _DeckStyle.glance ? 320 : 450;
+    final left = (1 - (_outFrom / widget.travel).abs()).clamp(0.4, 1.0);
+    _swap.duration = motion(s, (full * (_flung ? left : 1)).round());
     _swap.forward(from: 0);
   }
 
@@ -1159,30 +1165,42 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
     _giveUp?.cancel();
     _swap.dispose();
     _back.dispose();
+    _drag.dispose();
     super.dispose();
   }
 
-  void _springBack() {
-    final from = _drag;
-    _backTween = () => from * (1 - Curves.easeOutBack.transform(_back.value));
-    _back.duration = motion(AppScope.of(context).settings, 300);
+  void _animateDrag(double to, Curve curve, int ms) {
+    final from = _drag.value;
+    _backTween = () => from + (to - from) * curve.transform(_back.value);
+    _back.duration = motion(AppScope.of(context).settings, ms);
+    if (_back.duration == Duration.zero) {
+      _drag.value = to;
+      return;
+    }
     _back.forward(from: 0);
-    if (_back.duration == Duration.zero) setState(() => _drag = 0);
   }
+
+  void _springBack() => _animateDrag(0, Curves.easeOutBack, 300);
 
   void _end(DragEndDetails d) {
     final p = AppScope.of(context).player;
     final v = d.primaryVelocity ?? 0;
-    final far = _drag.abs() > widget.travel * 0.22 || (v.abs() > 700 && _drag.abs() > 24);
-    final dir = _drag < 0 ? 1 : -1; // swipe left = next
+    final x = _drag.value;
+    final far = x.abs() > widget.travel * 0.22 || (v.abs() > 700 && x.abs() > 24);
+    final dir = x < 0 ? 1 : -1; // swipe left = next
     if (!far || (v != 0 && v.sign == dir.toDouble() && v.abs() > 300)) {
       _springBack();
       return;
     }
     _swiped = dir;
+    // Keep it moving the moment the finger lifts (it used to stop until the
+    // next song had loaded), at about the finger's speed.
+    final rest = (widget.travel - x.abs()).clamp(0.0, widget.travel);
+    final ms = (v.abs() > 200 ? rest / v.abs() * 1000 * 1.6 : 320).clamp(160.0, 380.0).round();
+    _animateDrag(-dir * widget.travel, Curves.easeOutCubic, ms);
     unawaited(dir == 1 ? p.next() : p.previous());
     // No new song (end of the queue, or "previous" restarted this one).
-    _giveUp = Timer(const Duration(milliseconds: 700), () {
+    _giveUp = Timer(const Duration(milliseconds: 900), () {
       if (!mounted || _swiped == null) return;
       _swiped = null;
       _springBack();
@@ -1197,9 +1215,10 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
       case _DeckStyle.record:
         // Dips a little at the far point of the swap.
         final dip = 1 - 0.07 * sin(x.abs().clamp(0.0, 1.0) * pi);
-        return Transform.translate(
-          offset: Offset(x * w, 0),
-          child: Transform.scale(scale: dip, child: child),
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.translationValues(x * w, 0, 0)..scaleByDouble(dip, dip, 1, 1),
+          child: child,
         );
       case _DeckStyle.cover:
         final k = x.clamp(-1.0, 1.0);
@@ -1227,7 +1246,14 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final w = widget.travel;
-    final drag = _drag / w;
+    final out = _out;
+    // Built once per song; the animation below only moves them.
+    final outChild = out == null
+        ? null
+        : IgnorePointer(
+            child: RepaintBoundary(key: ValueKey('out${out.id}'), child: widget.builder(out, false)),
+          );
+    final inChild = RepaintBoundary(key: ValueKey(widget.song.id), child: widget.builder(widget.song, true));
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       dragStartBehavior: DragStartBehavior.down,
@@ -1236,30 +1262,21 @@ class _SwipeDeckState extends State<_SwipeDeck> with TickerProviderStateMixin {
         _giveUp?.cancel();
         _swiped = null;
       },
-      onHorizontalDragUpdate: (d) => setState(() => _drag += d.delta.dx),
+      onHorizontalDragUpdate: (d) => _drag.value += d.delta.dx,
       onHorizontalDragEnd: _end,
       onHorizontalDragCancel: _springBack,
       child: AnimatedBuilder(
-        animation: _swap,
+        animation: Listenable.merge([_swap, _drag]),
         builder: (context, _) {
-          final out = _out;
-          final t = out == null ? 1.0 : Curves.easeInOutCubic.transform(_swap.value);
+          final curve = _flung ? Curves.easeOutCubic : Curves.easeInOutCubic;
+          final t = outChild == null ? 1.0 : curve.transform(_swap.value);
           final from = _outFrom / w;
           return Stack(
             alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
-              if (out != null)
-                IgnorePointer(
-                  child: _place(
-                    KeyedSubtree(key: ValueKey('out${out.id}'), child: widget.builder(out, false)),
-                    from + (-_dir - from) * t,
-                  ),
-                ),
-              _place(
-                KeyedSubtree(key: ValueKey(widget.song.id), child: widget.builder(widget.song, true)),
-                out == null ? drag : _dir * (1 - t),
-              ),
+              if (outChild != null) _place(outChild, from + (-_dir - from) * t),
+              _place(inChild, outChild == null ? _drag.value / w : _dir * (1 - t)),
             ],
           );
         },

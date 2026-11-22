@@ -54,7 +54,7 @@ class MiniPlayer extends StatelessWidget {
                               child: Row(
                                 children: [
                                   Hero(
-                                    tag: 'now-art',
+                                    tag: NowArtTag.mini(context),
                                     flightShuttleBuilder: nowArtShuttle,
                                     createRectTween: nowArtRectTween,
                                     child: Art(albumId: song.albumId, size: 52),

@@ -71,6 +71,11 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/ytdlp").setMethodCallHandler { call, result ->
             Ytdlp.handle(this, call, result)
         }
+        Phone.attach(this)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/phone/events").setStreamHandler(Phone)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/phone").setMethodCallHandler { call, result ->
+            Phone.handle(this, call, result)
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "roadie/update").setMethodCallHandler { call, result ->
             Updater.handle(this, call, result) { work -> background(result, work) }
         }

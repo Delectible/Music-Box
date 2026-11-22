@@ -9,6 +9,25 @@ import '../core/scope.dart';
 import '../core/settings.dart';
 import '../core/theme.dart';
 
+/// The playing cover's Hero tag. The mini player's cover only flies to and
+/// from the full screen player, never between two screens' mini players
+/// (it slid about while the bar itself just moved with the page): the two
+/// tags match only when one is the player's.
+class NowArtTag {
+  /// The screen a mini player is on; null for the full screen player.
+  final Object? route;
+  const NowArtTag._(this.route);
+  static const player = NowArtTag._(null);
+  factory NowArtTag.mini(BuildContext context) => NowArtTag._(ModalRoute.of(context) ?? context);
+
+  @override
+  bool operator ==(Object other) =>
+      other is NowArtTag && (route == null || other.route == null || identical(route, other.route));
+
+  @override
+  int get hashCode => 7;
+}
+
 /// Hero flights of the playing cover: the big (player) cover, scaled, the
 /// whole way. Building the cover at every in-between size would fetch a new
 /// image size each frame and flash the stand-in.

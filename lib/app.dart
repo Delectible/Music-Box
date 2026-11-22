@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core/downloads.dart';
+import 'core/phone.dart';
 import 'core/native.dart';
 import 'core/library.dart';
 import 'core/player.dart';
@@ -102,6 +103,8 @@ class _RoadieAppState extends State<RoadieApp> {
     unawaited(warmCover(ctx, id));
   }
 
+  Route<void>? _player;
+
   BarsMode? _barsNow;
   void _bars() {
     final b = widget.settings.bars;
@@ -128,10 +131,24 @@ class _RoadieAppState extends State<RoadieApp> {
     _bars();
     // The GitHub APK looks for a newer build (does nothing elsewhere).
     unawaited(Updater.instance.start());
+    unawaited(PhoneLink.instance.start());
     PlayerSheet.opener = (_) {
       final nav = _nav.currentState;
       if (nav == null || widget.player.current == null) return;
-      nav.push(nowPlayingRoute(widget.settings));
+      // Only ever one player: a second open (e.g. "open the player on
+      // start" landing after it was opened by hand on a slow head unit)
+      // stacked an identical copy under the first.
+      final open = _player;
+      if (open != null && open.isActive) {
+        if (!open.isCurrent) nav.popUntil((r) => r == open);
+        return;
+      }
+      final route = _player = nowPlayingRoute(widget.settings);
+      unawaited(
+        nav.push(route).whenComplete(() {
+          if (_player == route) _player = null;
+        }),
+      );
     };
   }
 

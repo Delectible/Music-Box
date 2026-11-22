@@ -20,6 +20,9 @@
     <!-- Visualisers: Android counts reading the playing sound as the microphone. Nothing is recorded. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Phone over Bluetooth: seeing that a phone is connected and what it plays. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
         android:label="Roadie"
@@ -52,6 +55,18 @@
             android:name=".DownloadService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- Phone over Bluetooth: other apps' now playing and controls
+             (Android calls this "notification access"; nothing else is read). -->
+        <service
+            android:name=".MediaListener"
+            android:label="Roadie"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- audio_service: background playback, notification, media buttons. -->
         <service
@@ -87,6 +102,14 @@
         </provider>
     </application>
     <queries>
+        <!-- Phone over Bluetooth: finding the head unit's music apps. -->
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
