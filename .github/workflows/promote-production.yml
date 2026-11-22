@@ -1,0 +1,22 @@
+name: Promote to production
+# "publish": moves a build already on Play internal testing to production.
+# No rebuild: the exact build that was tested is the one released.
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Build number (empty = newest on internal testing)
+        required: false
+permissions:
+  contents: read
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install google-api-python-client google-auth
+      - name: Internal testing -> production
+        env:
+          SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          BUILD: ${{ inputs.build }}
+        run: python3 -I tool/play/promote.py

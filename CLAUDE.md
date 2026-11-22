@@ -11,12 +11,21 @@ Same workflow as Sisyphus and Darkroom (Delectible/...).
   tweaks, run only the tests that matter (full suite before committing).
 - Big changes: ask first. Open-ended visual changes: show 2–3 screenshot
   options before building (`SHOTS=dir flutter test test/screens_test.dart`).
+- Tests: while iterating, only `flutter analyze` plus a screenshot test
+  when a look needs checking. The full suite runs once, on "push", before
+  it goes to main (CI runs it again anyway).
 - Repo: Delectible/Music-Box. Work on the session branch; commit freely.
-  **Only on "push"**: fast-forward onto `main` (`git fetch origin main &&
-  git merge-base --is-ancestor origin/main HEAD && git push origin
-  HEAD:main`). Every push to `main` runs `.github/workflows/build-apk.yml`:
-  analyze + test, then the APK on Releases (`build-<n>`) and, once the
-  `PLAY_SERVICE_ACCOUNT_JSON` secret is set, Play internal testing.
+  **"push"** = testing: full suite, then fast-forward onto `main` (`git
+  fetch origin main && git merge-base --is-ancestor origin/main HEAD &&
+  git push origin HEAD:main`). Every push to `main` runs
+  `.github/workflows/build-apk.yml`: analyze + test, then the APK on
+  Releases (`build-<n>`, what the in-app updater installs) and, once the
+  `PLAY_SERVICE_ACCOUNT_JSON` secret is set, Play internal testing. Then
+  send_later ~20 min, check the run, and PushNotification: version, build,
+  one line of what's new (or the failure).
+- **"publish"** = Play production: push first if needed, wait for that
+  build to reach internal testing, then run `promote-production.yml`
+  (build number empty = newest internal; no rebuild).
 - User-visible change: bump `pubspec.yaml` version+build and
   `AppInfo.version`; set `AppInfo.latest` (plain words).
 - Commit messages plain: no session links, no Co-Authored-By.
