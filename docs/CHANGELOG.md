@@ -316,6 +316,13 @@
     next song, and only moves the pictures while dragging (less lag). The
     mini player's cover no longer slides about between screens while the
     bar snaps into place: it only flies to and from the full player. (0.5.1)
+83. None of the phone methods worked on the head unit (its Bluetooth app
+    shows no notification). Added "Scan the head unit" to the phone screen:
+    lists the Bluetooth / music / MCU apps with their services, receivers,
+    content providers (and what a read returns), the broadcast names in
+    their manifests and code, system properties, system services and
+    settings; then Listen logs every one of those broadcasts heard while
+    the phone plays and skips. Copy or save to a file. (0.5.2)
 
 ## Ideas
 

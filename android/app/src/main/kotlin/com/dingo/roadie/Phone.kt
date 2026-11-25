@@ -78,6 +78,12 @@ object Phone : EventChannel.StreamHandler {
                 "browse" -> { connectBrowser(call.argument<String>("app"), call.argument<String>("service")); result.success(true) }
                 "launch" -> result.success(launch(activity, call.argument<String>("app")!!))
                 "apps" -> result.success(apps())
+                "scan" -> Thread {
+                    val text = try { HeadUnitScan.scan(ctx) } catch (e: Throwable) { "Scan failed: $e" }
+                    main.post { result.success(text) }
+                }.start()
+                "listen" -> { HeadUnitScan.listen(ctx, call.argument<Boolean>("on") == true); result.success(true) }
+                "heard" -> result.success(HeadUnitScan.heard())
                 "askBluetooth" -> {
                     val perm = "android.permission.BLUETOOTH_CONNECT"
                     val need = Build.VERSION.SDK_INT >= 31 &&
@@ -295,7 +301,14 @@ object Phone : EventChannel.StreamHandler {
 
     // ---- 3. Broadcasts -----------------------------------------------------
 
+    val knownActions get() = broadcastActions
+
     private val broadcastActions = listOf(
+        // Head units built on the MTC platform (Dasaita and others).
+        "com.microntek.bt.report", "com.microntek.btmusic.report", "com.microntek.music.report",
+        "com.microntek.irkeyDown", "com.microntek.irkeyUp", "com.microntek.canbusdisplay",
+        "com.microntek.bootcheck", "com.microntek.btConnect", "com.microntek.musicinfo",
+        "com.hct.bt.report", "com.syu.bt.music", "com.fyt.bt.music",
         "com.android.music.metachanged", "com.android.music.playstatechanged",
         "com.spotify.music.metadatachanged", "com.spotify.music.playbackstatechanged",
         "com.amazon.mp3.metachanged", "com.htc.music.metachanged", "fm.last.android.metachanged",

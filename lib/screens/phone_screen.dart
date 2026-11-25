@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/format.dart';
+import '../core/native.dart';
 import '../core/phone.dart';
 import '../core/scope.dart';
 import '../core/theme.dart';
@@ -656,6 +657,23 @@ class _Setup extends StatelessWidget {
                   ),
               ],
             ),
+            step(
+              6,
+              null,
+              'Scan the head unit',
+              'Looks for private ways this head unit\'s Bluetooth app talks (its own signals, services '
+                  'and settings) and listens while the phone plays, to find another way in.',
+              [
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute<void>(builder: (_) => const HeadUnitScanScreen())),
+                  icon: const Icon(Icons.manage_search_rounded),
+                  label: const Text('Scan'),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               'Bluetooth says',
@@ -672,6 +690,174 @@ class _Setup extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Looks through the head unit for private ways its Bluetooth app talks
+/// (HeadUnitScan.kt), and listens for its broadcasts while the phone plays.
+class HeadUnitScanScreen extends StatefulWidget {
+  const HeadUnitScanScreen({super.key});
+
+  @override
+  State<HeadUnitScanScreen> createState() => _HeadUnitScanScreenState();
+}
+
+class _HeadUnitScanScreenState extends State<HeadUnitScanScreen> {
+  static const _ch = MethodChannel('roadie/phone');
+  String? _report;
+  bool _scanning = false;
+  bool _listening = false;
+  List<String> _heard = const [];
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_scan());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    if (_listening) {
+      unawaited(_ch.invokeMethod<bool>('listen', {'on': false}).catchError((Object _) => false));
+    }
+    super.dispose();
+  }
+
+  Future<void> _scan() async {
+    setState(() => _scanning = true);
+    String text;
+    try {
+      text = await _ch.invokeMethod<String>('scan') ?? 'Nothing to scan here.';
+    } on Object catch (e) {
+      text = 'Scan failed: $e';
+    }
+    if (mounted) setState(() => (_report = text, _scanning = false));
+  }
+
+  Future<void> _listen(bool on) async {
+    try {
+      await _ch.invokeMethod<bool>('listen', {'on': on});
+    } on Object {
+      return;
+    }
+    _poll?.cancel();
+    if (on) {
+      _poll = Timer.periodic(const Duration(seconds: 1), (_) async {
+        final h = (await _ch.invokeMethod<List<Object?>>('heard'))?.cast<String>() ?? const [];
+        if (mounted && h.length != _heard.length) setState(() => _heard = h);
+      });
+    }
+    setState(() => _listening = on);
+  }
+
+  String get _all => [
+    'Roadie head unit scan',
+    if (_heard.isNotEmpty) ...['', '== Heard ==', ..._heard],
+    _report ?? '',
+  ].join('\n');
+
+  Future<void> _save() async {
+    final roots = await Native.roots();
+    final f = File('${roots.first}/Roadie-bluetooth-scan.txt');
+    var msg = 'Saved to ${f.path}';
+    try {
+      await f.writeAsString(_all);
+    } on Object catch (e) {
+      msg = 'Couldn\'t save: $e';
+    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const mono = TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.3);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan the head unit'),
+        toolbarHeight: 64,
+        actions: [
+          IconButton(
+            iconSize: 28,
+            padding: const EdgeInsets.all(12),
+            tooltip: 'Copy',
+            icon: const Icon(Icons.copy_rounded),
+            onPressed: _report == null
+                ? null
+                : () {
+                    unawaited(Clipboard.setData(ClipboardData(text: _all)));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                  },
+          ),
+          IconButton(
+            iconSize: 28,
+            padding: const EdgeInsets.all(12),
+            tooltip: 'Save as a file',
+            icon: const Icon(Icons.save_alt_rounded),
+            onPressed: _report == null ? null : _save,
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: [
+          Text(
+            'Looks for private ways the head unit\'s Bluetooth app talks to the rest of the system. '
+            'Turn on Listen, then play, pause and skip on the phone; anything heard shows below. '
+            'Then save it (or take photos) and send it over.',
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
+                onPressed: () => _listen(!_listening),
+                icon: Icon(_listening ? Icons.stop_rounded : Icons.hearing_rounded),
+                label: Text(_listening ? 'Stop listening' : 'Listen'),
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 56)),
+                onPressed: _scanning ? null : _scan,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_scanning ? 'Scanning…' : 'Scan again'),
+              ),
+            ],
+          ),
+          if (_listening || _heard.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Heard (${_heard.length})',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SelectableText(
+                _heard.isEmpty ? 'Nothing yet…' : _heard.reversed.join('\n'),
+                style: mono,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (_report == null)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else
+            SelectableText(_report!, style: mono),
+        ],
+      ),
     );
   }
 }
